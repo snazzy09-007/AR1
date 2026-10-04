@@ -1,0 +1,169 @@
+@import "tailwindcss";
+
+@theme {
+  --color-abyss: #05070a;
+  --color-panel: #0a0e13;
+  --color-raise: #10161d;
+  --color-line: rgba(255, 255, 255, 0.08);
+  --color-lime: #b8f44d;
+  --color-limed: #8fca2e;
+  --color-gold: #ffd054;
+  --color-danger: #ff5c6a;
+  --color-frost: #5cd6f2;
+  --color-violet: #a78bfa;
+  --color-mist: #8a939e;
+  --color-snow: #e8ecef;
+
+  --font-display: var(--font-space), ui-sans-serif, system-ui, sans-serif;
+  --font-mono: var(--font-jb), ui-monospace, monospace;
+}
+
+html {
+  scroll-behavior: smooth;
+}
+
+body {
+  background-color: var(--color-abyss);
+  color: var(--color-snow);
+  font-family: var(--font-display);
+  overflow-x: hidden;
+}
+
+::selection {
+  background: rgba(184, 244, 77, 0.28);
+  color: #f4ffdd;
+}
+
+/* ---- scrollbars ---- */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: rgba(255, 255, 255, 0.14) transparent;
+}
+*::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+*::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.12);
+  border-radius: 99px;
+}
+*::-webkit-scrollbar-thumb:hover {
+  background: rgba(184, 244, 77, 0.35);
+}
+*::-webkit-scrollbar-track {
+  background: transparent;
+}
+*::-webkit-scrollbar-corner {
+  background: transparent;
+}
+
+/* ---- décor de fond ---- */
+.bg-grid {
+  background-image:
+    linear-gradient(rgba(255, 255, 255, 0.035) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(255, 255, 255, 0.035) 1px, transparent 1px);
+  background-size: 44px 44px;
+  mask-image: radial-gradient(ellipse 90% 70% at 50% 0%, black 30%, transparent 78%);
+}
+
+.noise::after {
+  content: "";
+  position: fixed;
+  inset: 0;
+  z-index: 60;
+  pointer-events: none;
+  opacity: 0.05;
+  background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='3' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+  background-size: 180px 180px;
+}
+
+/* ---- surfaces ---- */
+.glass {
+  background: linear-gradient(160deg, rgba(255, 255, 255, 0.045), rgba(255, 255, 255, 0.015));
+  border: 1px solid rgba(255, 255, 255, 0.07);
+  backdrop-filter: blur(10px);
+}
+
+.glow-lime {
+  box-shadow: 0 0 0 1px rgba(184, 244, 77, 0.25), 0 0 34px rgba(184, 244, 77, 0.12);
+}
+
+.glow-gold {
+  box-shadow: 0 0 0 1px rgba(255, 208, 84, 0.22), 0 0 34px rgba(255, 208, 84, 0.1);
+}
+
+.card-hover {
+  transition: transform 0.35s cubic-bezier(0.22, 1, 0.36, 1), border-color 0.35s, box-shadow 0.35s;
+}
+.card-hover:hover {
+  transform: translateY(-2px);
+  border-color: rgba(255, 255, 255, 0.16);
+}
+
+/* ---- champs ---- */
+.input {
+  width: 100%;
+  background: rgba(0, 0, 0, 0.35);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 12px;
+  padding: 10px 14px;
+  font-family: var(--font-mono);
+  font-size: 14px;
+  color: var(--color-snow);
+  outline: none;
+  transition: border-color 0.2s, box-shadow 0.2s, background 0.2s;
+}
+.input::placeholder {
+  color: rgba(138, 147, 158, 0.55);
+}
+.input:focus {
+  border-color: rgba(184, 244, 77, 0.55);
+  box-shadow: 0 0 0 3px rgba(184, 244, 77, 0.12);
+  background: rgba(0, 0, 0, 0.5);
+}
+.input:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+input[type="number"]::-webkit-outer-spin-button,
+input[type="number"]::-webkit-inner-spin-button {
+  -webkit-appearance: none;
+  margin: 0;
+}
+input[type="number"] {
+  -moz-appearance: textfield;
+  appearance: textfield;
+}
+
+/* ---- animations ---- */
+@keyframes soft-pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.35; }
+}
+.pulse-dot {
+  animation: soft-pulse 1.6s ease-in-out infinite;
+}
+
+@keyframes scanline {
+  0% { transform: translateY(-100%); }
+  100% { transform: translateY(420%); }
+}
+.scanline::before {
+  content: "";
+  position: absolute;
+  inset-inline: 0;
+  top: 0;
+  height: 24%;
+  background: linear-gradient(180deg, transparent, rgba(184, 244, 77, 0.05), transparent);
+  animation: scanline 7s linear infinite;
+  pointer-events: none;
+}
+
+@keyframes marquee {
+  from { transform: translateX(0); }
+  to { transform: translateX(-50%); }
+}
+.animate-marquee {
+  animation: marquee 26s linear infinite;
+}

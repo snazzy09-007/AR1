@@ -1,0 +1,41 @@
+# Dependencies
+node_modules/
+
+# Next.js / Vercel build outputs
+.next/
+out/
+.vercel/
+
+# Environment files — never commit secrets
+.env
+.env.local
+.env.development.local
+.env.test.local
+.env.production.local
+.env*.local
+!.env.example
+
+# Logs and debug files
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+*.log
+
+# TypeScript / tooling caches
+*.tsbuildinfo
+next-env.d.ts
+.eslintcache
+
+# OS / editors
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
+
+# Python agent runtime files
+__pycache__/
+*.py[cod]
+sniperfc_chrome_profile/
+sniperfc/
+chromedriver*
