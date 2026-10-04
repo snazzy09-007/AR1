@@ -4,10 +4,10 @@ import { publicBaseUrl } from "@/lib/agent";
 
 export const dynamic = "force-dynamic";
 
-/**
- * Sert fut_agent.py avec BASE_URL et le token déjà injectés :
- * l'utilisateur n'a plus rien à éditer, il double-clique.
- */
+const AGENT_FILENAME = "sniperfc_agent_v4.py";
+const AGENT_MARKER = "SNIPERFC-AGENT-V4-OK";
+
+/** Sert un agent V4 neuf avec URL et token déjà injectés. */
 export async function GET(req: Request) {
   const url = new URL(req.url);
   const token = (
@@ -18,34 +18,39 @@ export async function GET(req: Request) {
   const profile = url.searchParams.get("profile") ?? "";
   const base = publicBaseUrl(req);
 
+  if (!token) {
+    return Response.json(
+      { ok: false, error: "Token manquant. Regenere un launcher depuis la console." },
+      { status: 400 },
+    );
+  }
+
   let template: string;
   try {
     template = await readFile(
-      path.join(process.cwd(), "public", "agent", "fut_agent.py"),
+      path.join(process.cwd(), "public", "agent", AGENT_FILENAME),
       "utf8",
     );
-  } catch {
-    return new Response("# Agent introuvable sur le serveur.", {
+  } catch (error) {
+    console.error("[agent/download] lecture impossible", error);
+    return new Response("# Agent V4 introuvable sur le serveur.\n", {
       status: 500,
       headers: { "Content-Type": "text/plain; charset=utf-8" },
     });
   }
 
-  const pyStr = (v: string) => JSON.stringify(v); // échappe proprement pour Python
-
+  const pyStr = (value: string) => JSON.stringify(value);
   const configured = template
     .replace(/^BASE_URL = .*$/m, `BASE_URL = ${pyStr(base)}`)
-    .replace(/^AGENT_KEY = .*$/m, `AGENT_KEY = ${pyStr(token || "dev-agent-key")}`)
+    .replace(/^AGENT_KEY = .*$/m, `AGENT_KEY = ${pyStr(token)}`)
     .replace(
       /^CHROME_PROFILE = .*$/m,
-      profile ? `CHROME_PROFILE = ${pyStr(profile)}` : "CHROME_PROFILE = \"\"",
+      profile ? `CHROME_PROFILE = ${pyStr(profile)}` : 'CHROME_PROFILE = ""',
     );
 
-  // Garanties serveur : le fichier doit être 100% ASCII et contenir le
-  // marqueur d'intégrité, sinon on refuse de servir un contenu corrompu.
-  if (!/^[\x00-\x7F]*$/.test(configured) || !configured.includes("SNIPERFC-AGENT-OK")) {
-    console.error("[agent/download] gabarit invalide détecté, refus de servir");
-    return new Response("# Gabarit d'agent invalide cote serveur.\n", {
+  if (!/^[\x00-\x7F]*$/.test(configured) || !configured.includes(AGENT_MARKER)) {
+    console.error("[agent/download] agent V4 invalide");
+    return new Response("# Agent V4 invalide cote serveur.\n", {
       status: 500,
       headers: { "Content-Type": "text/plain; charset=utf-8" },
     });
@@ -54,8 +59,10 @@ export async function GET(req: Request) {
   return new Response(configured, {
     headers: {
       "Content-Type": "text/x-python; charset=utf-8",
-      "Content-Disposition": 'attachment; filename="fut_agent.py"',
-      "Cache-Control": "no-store",
+      "Content-Disposition": `attachment; filename="${AGENT_FILENAME}"`,
+      "Cache-Control": "no-store, no-cache, must-revalidate",
+      Pragma: "no-cache",
+      Expires: "0",
     },
   });
 }

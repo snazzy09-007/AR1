@@ -73,7 +73,7 @@ export function ConnectPanel({
         const url = `/api/agent/launcher?os=${os}&token=${encodeURIComponent(t)}`;
         const a = document.createElement("a");
         a.href = url;
-        a.download = os === "win" ? "SniperFC.bat" : "SniperFC.sh";
+        a.download = os === "win" ? "SniperFC_V4.bat" : "SniperFC_V4.sh";
         document.body.appendChild(a);
         a.click();
         a.remove();
@@ -86,8 +86,8 @@ export function ConnectPanel({
 
   const oneLiner =
     os === "win"
-      ? `powershell -NoProfile -ExecutionPolicy Bypass -Command "iwr -UseBasicParsing '${origin}/api/agent/launcher?os=win&token=${token ?? "TON_TOKEN"}' -OutFile 'SniperFC.bat'; .\\SniperFC.bat"`
-      : `curl -fsSL "${origin}/api/agent/launcher?os=unix&token=${token ?? "TON_TOKEN"}" -o SniperFC.sh && bash SniperFC.sh`;
+      ? `powershell -NoProfile -ExecutionPolicy Bypass -Command "iwr -UseBasicParsing '${origin}/api/agent/launcher?os=win&token=${token ?? "TON_TOKEN"}' -OutFile 'SniperFC_V4.bat'; .\\SniperFC_V4.bat"`
+      : `curl -fsSL "${origin}/api/agent/launcher?os=unix&token=${token ?? "TON_TOKEN"}" -o SniperFC_V4.sh && bash SniperFC_V4.sh`;
 
   return (
     <div className="space-y-4">
@@ -164,10 +164,10 @@ export function ConnectPanel({
                       <li>
                         2. Double-clique{" "}
                         <span className="font-mono text-lime">
-                          {os === "win" ? "SniperFC.bat" : "SniperFC.sh"}
+                          {os === "win" ? "SniperFC_V4.bat" : "SniperFC_V4.sh"}
                         </span>
                         {os === "unix" && (
-                          <span className="text-mist"> (ou : bash SniperFC.sh)</span>
+                          <span className="text-mist"> (ou : bash SniperFC_V4.sh)</span>
                         )}
                       </li>
                       <li>3. Reviens ici : le badge passe au vert 🟢 automatiquement</li>
@@ -252,10 +252,10 @@ export function ConnectPanel({
         <div className="mt-3 flex flex-wrap gap-2">
           <a
             href={`/api/agent/download?token=${token ?? ""}`}
-            download="fut_agent.py"
+            download="sniperfc_agent_v4.py"
             className="inline-flex h-9 items-center gap-2 rounded-lg border border-white/15 px-3.5 text-[11px] font-semibold text-snow/85 transition-colors hover:border-frost/50 hover:text-frost"
           >
-            <Download className="size-3.5" /> fut_agent.py seul
+            <Download className="size-3.5" /> sniperfc_agent_v4.py seul
           </a>
           {token && (
             <button
