@@ -24,6 +24,18 @@ const ACCENT_TEXT: Record<string, string> = {
   danger: "text-danger",
 };
 
+// Traduction lisible des états remontés par l'agent Python
+const AGENT_STATUS_LABEL: Record<string, string> = {
+  offline: "hors ligne",
+  starting: "démarrage…",
+  browser_ready: "Chrome ouvert",
+  waiting_login: "attente login EA",
+  running: "en chasse",
+  paused: "en pause",
+  stopped: "arrêté",
+  demo: "démo",
+};
+
 function Row({ label, value, tone }: { label: string; value: React.ReactNode; tone?: string }) {
   return (
     <div className="flex items-center justify-between gap-3 border-b border-white/[0.05] py-2 last:border-0">
@@ -152,6 +164,17 @@ export function ControlsPanel({
           label="Rotation A/B"
           value={engine.rotateEnabled ? `toutes les ${engine.rotateEveryMin} min` : "désactivée"}
           tone={engine.rotateEnabled ? "text-frost" : "text-mist"}
+        />
+        <Row
+          label="Agent"
+          value={AGENT_STATUS_LABEL[engine.agentStatus] ?? engine.agentStatus}
+          tone={
+            engine.agentStatus === "running"
+              ? "text-lime"
+              : engine.agentStatus === "offline"
+                ? "text-mist"
+                : "text-gold"
+          }
         />
         <Row label="Boucles" value={fmtNum(engine.loops)} />
 
