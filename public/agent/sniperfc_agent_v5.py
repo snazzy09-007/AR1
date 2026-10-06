@@ -95,6 +95,7 @@ class SniperFCV5:
         self.last_heartbeat_at = 0.0
         self.last_quiet_log_at = 0.0
         self.api_online = False
+        self._unauth_count = 0
         self.lock = threading.Lock()
         self.http = self.build_session()
 
@@ -161,8 +162,29 @@ class SniperFCV5:
             print("  Verifie ton acces internet ou l'URL du site.", flush=True)
             return False
 
+        body = response.text[:400].strip()
+        vercel_gate = (
+            "authentication required" in body.lower()
+            or "vercel" in body.lower() and "<" in body
+        )
+
+        if response.status_code == 401 and vercel_gate:
+            print("  [ECHEC] Ton URL Vercel est un deploiement PREVIEW protege.", flush=True)
+            print("  Ses API exigent une connexion au compte Vercel : l'agent ne", flush=True)
+            print("  peut jamais y acceder, quelle que soit la cle.", flush=True)
+            print("", flush=True)
+            print("  SOLUTION (au choix) :", flush=True)
+            print("    a) Utilise le domaine PRODUCTION du site (sans le hash", flush=True)
+            print("       aleatoire, ex : ton-projet.vercel.app), ou", flush=True)
+            print("    b) Vercel > Settings > Deployment Protection > desactive-le,", flush=True)
+            print("       puis regenere le launcher.", flush=True)
+            print("", flush=True)
+            print("  L'agent reste actif et reessaiera en boucle.", flush=True)
+            return False
+
         if response.status_code == 401:
-            print("  [ECHEC] Cle refusee (401).", flush=True)
+            print("  [ECHEC] Cle refusee (401). Detail serveur :", flush=True)
+            print("  " + (body[:200] or "(reponse vide)"), flush=True)
             print("  Regenere le launcher depuis l'onglet Connexion.", flush=True)
             return False
 
@@ -173,8 +195,8 @@ class SniperFCV5:
                 % (response.status_code, content_type or "type inconnu"),
                 flush=True,
             )
-            print("  Le pare-feu de l'hebergeur bloque probablement l'agent.", flush=True)
-            print("  Vercel : Settings > Firewall > Bot Protection > Off.", flush=True)
+            print("  Debut de la reponse :", flush=True)
+            print("  " + (body[:200] or "(reponse vide)"), flush=True)
             return False
 
         print("  [OK] Console joignable. Agent reconnu.", flush=True)
@@ -246,13 +268,17 @@ class SniperFCV5:
                     timeout=8,
                 )
                 if response.status_code == 401:
-                    print(
-                        "Cle refusee. Regenere le launcher depuis la console.",
-                        flush=True,
-                    )
+                    self._unauth_count += 1
+                    if self._unauth_count == 1 or self._unauth_count % 12 == 0:
+                        print(
+                            "Cle refusee (%d) - l'agent retente toutes les 30 s."
+                            % self._unauth_count,
+                            flush=True,
+                        )
                     self.api_online = False
-                    self.sleep_between(5)
+                    self.sleep_between(30)
                     continue
+                self._unauth_count = 0
 
                 response.raise_for_status()
                 payload = response.json()

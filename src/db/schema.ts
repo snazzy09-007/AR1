@@ -131,6 +131,7 @@ export const agents = pgTable("agents", {
   name: text("name").notNull().default("Mon PC"),
   platform: text("platform"),
   version: text("version"),
+  revoked: boolean("revoked").notNull().default(false),
   lastSeenAt: timestamp("last_seen_at", { withTimezone: true }),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
 });
