@@ -39,4 +39,7 @@ __pycache__/
 sniperfc_chrome_profile/
 sniperfc/
 SNIPERFC_V4/
+SNIPERFC_V5/
+chrome_profile_v4/
+chrome_profile_v5/
 chromedriver*

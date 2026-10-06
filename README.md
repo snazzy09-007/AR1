@@ -113,7 +113,7 @@ Après le déploiement :
 1. Ouvrez le site Vercel.
 2. Allez dans **Connexion**.
 3. Cliquez sur **Télécharger mon launcher**.
-4. Double-cliquez sur `SniperFC_V4.bat` sous Windows, ou exécutez `bash SniperFC_V4.sh` sous macOS/Linux.
+4. Double-cliquez sur `SniperFC_V5.bat` sous Windows, ou exécutez `bash SniperFC_V5.sh` sous macOS/Linux. Le launcher est auto-extractible : il contient déjà tout le moteur, aucun autre fichier n'est téléchargé.
 
 Le launcher :
 

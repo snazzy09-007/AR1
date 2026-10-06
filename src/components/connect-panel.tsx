@@ -73,7 +73,7 @@ export function ConnectPanel({
         const url = `/api/agent/launcher?os=${os}&token=${encodeURIComponent(t)}`;
         const a = document.createElement("a");
         a.href = url;
-        a.download = os === "win" ? "SniperFC_V4.bat" : "SniperFC_V4.sh";
+        a.download = os === "win" ? "SniperFC_V5.bat" : "SniperFC_V5.sh";
         document.body.appendChild(a);
         a.click();
         a.remove();
@@ -86,8 +86,8 @@ export function ConnectPanel({
 
   const oneLiner =
     os === "win"
-      ? `powershell -NoProfile -ExecutionPolicy Bypass -Command "iwr -UseBasicParsing '${origin}/api/agent/launcher?os=win&token=${token ?? "TON_TOKEN"}' -OutFile 'SniperFC_V4.bat'; .\\SniperFC_V4.bat"`
-      : `curl -fsSL "${origin}/api/agent/launcher?os=unix&token=${token ?? "TON_TOKEN"}" -o SniperFC_V4.sh && bash SniperFC_V4.sh`;
+      ? `powershell -NoProfile -ExecutionPolicy Bypass -Command "iwr -UseBasicParsing '${origin}/api/agent/launcher?os=win&token=${token ?? "TON_TOKEN"}' -OutFile 'SniperFC_V5.bat'; .\\SniperFC_V5.bat"`
+      : `curl -fsSL "${origin}/api/agent/launcher?os=unix&token=${token ?? "TON_TOKEN"}" -o SniperFC_V5.sh && bash SniperFC_V5.sh`;
 
   return (
     <div className="space-y-4">
@@ -104,8 +104,8 @@ export function ConnectPanel({
                 <span className="text-lime">prêt en 30 secondes</span>
               </h2>
               <p className="mt-2 max-w-lg text-[13px] leading-relaxed text-mist">
-                On génère un launcher déjà configuré avec ton adresse et ta clé privée.
-                Tu le lances, il installe tout et se connecte seul à cette console.
+                Un seul fichier, tout embarqué dedans. Ton navigateur le télécharge,
+                tu double-cliques : il vérifie Python, dépose le moteur et ouvre Chrome.
                 <span className="text-snow/80"> Rien à éditer, rien à copier.</span>
               </p>
 
@@ -164,10 +164,10 @@ export function ConnectPanel({
                       <li>
                         2. Double-clique{" "}
                         <span className="font-mono text-lime">
-                          {os === "win" ? "SniperFC_V4.bat" : "SniperFC_V4.sh"}
+                          {os === "win" ? "SniperFC_V5.bat" : "SniperFC_V5.sh"}
                         </span>
                         {os === "unix" && (
-                          <span className="text-mist"> (ou : bash SniperFC_V4.sh)</span>
+                          <span className="text-mist"> (ou : bash SniperFC_V5.sh)</span>
                         )}
                       </li>
                       <li>3. Reviens ici : le badge passe au vert 🟢 automatiquement</li>
@@ -252,10 +252,10 @@ export function ConnectPanel({
         <div className="mt-3 flex flex-wrap gap-2">
           <a
             href={`/api/agent/download?token=${token ?? ""}`}
-            download="sniperfc_agent_v4.py"
+            download="sniperfc_agent_v5.py"
             className="inline-flex h-9 items-center gap-2 rounded-lg border border-white/15 px-3.5 text-[11px] font-semibold text-snow/85 transition-colors hover:border-frost/50 hover:text-frost"
           >
-            <Download className="size-3.5" /> sniperfc_agent_v4.py seul
+            <Download className="size-3.5" /> sniperfc_agent_v5.py seul
           </a>
           {token && (
             <button

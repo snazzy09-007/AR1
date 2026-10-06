@@ -1,5 +1,5 @@
 # -*- coding: ascii -*-
-# SNIPERFC-AGENT-V4-OK
+# SNIPERFC-AGENT-V5-OK
 """
 SNIPER FC V4 - local Selenium agent.
 
@@ -26,7 +26,7 @@ BASE_URL = "http://localhost:3000"
 AGENT_KEY = "dev-agent-key"
 CHROME_PROFILE = ""
 
-AGENT_VERSION = "4.0"
+AGENT_VERSION = "5.0"
 WEB_APP_URL = "https://www.ea.com/fr-fr/ea-sports-fc/ultimate-team/web-app/"
 POLL_SECONDS = 1.0
 HEARTBEAT_SECONDS = 5.0
