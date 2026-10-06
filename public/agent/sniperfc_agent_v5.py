@@ -98,6 +98,15 @@ class SniperFCV5:
         self._unauth_count = 0
         self.lock = threading.Lock()
         self.http = self.build_session()
+        # Anti zombie-stop : un ancien ordre d'arret (status=stopped
+        # persistant ou commande stop non consommee) ne doit pas tuer un
+        # agent qui vient de demarrer. Grace les STOP_IGNORE_SECONDS
+        # premieres secondes, le serveur a le temps de se rearmer.
+        self.started_at = time.time()
+        self.grace_seconds = 20.0
+
+    def stop_allowed(self):
+        return (time.time() - self.started_at) > self.grace_seconds
 
     # ------------------------------------------------------------------
     # Values and timing
@@ -249,7 +258,10 @@ class SniperFCV5:
             self.paused = False
             self.log("Resume received from console", "ok")
         elif kind == "stop":
-            self.stopped = True
+            if self.stop_allowed():
+                self.stopped = True
+            else:
+                print("Ordre STOP ignore : agent en cours de demarrage.", flush=True)
         elif kind in ("refresh_now", "reload_strategy"):
             self.must_refresh = True
         elif kind == "restart_driver":
@@ -295,7 +307,7 @@ class SniperFCV5:
 
                     status = str(self.engine.get("status", "running"))
                     self.paused = status == "paused"
-                    if status == "stopped":
+                    if status == "stopped" and self.stop_allowed():
                         self.stopped = True
 
                     if self.api_online and old_filters != new_filters:
@@ -721,12 +733,13 @@ class SniperFCV5:
         print("SNIPER FC Agent V5 demarre...", flush=True)
         self.check_console()
 
-        threading.Thread(target=self.poll_loop, daemon=True).start()
-        # Signale la presence tout de suite : la console affiche AGENT EN LIGNE
-        # sans attendre l'ouverture de Chrome ni la connexion EA.
+        # Signale la presence AVANT le thread de poll : le serveur rearme
+        # un eventuel status=stopped restant d'une session precedente.
         self.heartbeat(force=True, status="starting")
         self.log("Agent V5 connecte a la console.", "ok")
-        self.sleep_between(1.0)
+
+        threading.Thread(target=self.poll_loop, daemon=True).start()
+        self.sleep_between(0.8)
 
         self.open_browser()
         self.heartbeat(force=True, status="browser_ready")

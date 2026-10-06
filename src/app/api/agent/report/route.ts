@@ -1,6 +1,6 @@
 import { eq } from "drizzle-orm";
 import { db } from "@/db";
-import { agents } from "@/db/schema";
+import { agents, botState } from "@/db/schema";
 import { authorizeAgent, unauthorized } from "@/lib/agent";
 import {
   addLog,
@@ -8,6 +8,7 @@ import {
   markSold,
   recordPurchase,
   recordSnapshot,
+  STATE_ID,
   updateState,
 } from "@/lib/state";
 
@@ -102,6 +103,22 @@ async function handleEvent(ev: AgentEvent, agentId?: number) {
         const v = num(ev[key]);
         if (v !== undefined) patch[key] = v;
       }
+
+      // Anti-« zombie stop » : si un agent démarre/tourne alors que la base
+      // garde un vieux `status = stopped` (clic Stop d'un ancien essai),
+      // son démarrage prouve que l'utilisateur veut bosser : réarmement auto.
+      const REARM = new Set(["starting", "browser_ready", "running"]);
+      if (typeof ev.status === "string" && REARM.has(ev.status)) {
+        const [state] = await db
+          .select({ status: botState.status })
+          .from(botState)
+          .where(eq(botState.id, STATE_ID));
+        if (state?.status === "stopped") {
+          patch.status = "running";
+          await addLog("ok", "🔓 Agent redémarré : l'état « arrêté » est réarmé.");
+        }
+      }
+
       await updateState(patch);
       if (agentId && (ev.platform || ev.version || ev.name)) {
         await db
