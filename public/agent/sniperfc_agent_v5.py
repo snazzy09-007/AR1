@@ -10,6 +10,8 @@ The launcher injects BASE_URL and AGENT_KEY automatically.
 import os
 import platform
 import random
+import shutil
+import tempfile
 import threading
 import time
 
@@ -367,36 +369,87 @@ class SniperFCV5:
     # ------------------------------------------------------------------
     # Chrome lifecycle
     # ------------------------------------------------------------------
-    def open_browser(self):
-        """Open Chrome with retry ; never let a driver crash kill the process."""
-        if self.driver is not None:
+    def _profile_candidates(self):
+        """Ordered list of Chrome profile directories: perso, standard, temp."""
+        candidates = []
+        custom = CHROME_PROFILE.strip()
+        if custom:
+            candidates.append(("perso-custom", custom))
+
+        if os.name == "nt":
+            candidates.append((
+                "perso-standard",
+                os.path.join(os.environ.get("LOCALAPPDATA", os.path.expanduser("~")),
+                             "SniperFC", "chrome_profile"),
+            ))
+        else:
+            candidates.append((
+                "perso-standard",
+                os.path.join(os.path.expanduser("~"), ".sniperfc", "chrome_profile"),
+            ))
+
+        # Ultimate fallback: fresh unique temp dir -> guaranteed to open even
+        # if every persistent profile is corrupted or already locked.
+        candidates.append(("temporaire", tempfile.mkdtemp(prefix="sniperfc_chrome_")))
+        return candidates
+
+    def _heal_profile(self, path):
+        """Delete a corrupted Chrome profile in the background if possible.
+        Never kills the user's own Chrome; if the folder is locked, the temp
+        fallback keeps the agent alive anyway."""
+        if not os.path.isdir(path):
             return
+        try:
+            shutil.rmtree(path, ignore_errors=True)
+            self.log("Profil Chrome corrompu vide -> prochain demarrage propre.", "warn")
+        except Exception:
+            pass  # locked by another process : the temp profile saves us
 
-        profile = CHROME_PROFILE.strip()
-        if not profile:
-            profile = os.path.join(os.getcwd(), "chrome_profile_v5")
-
+    def _chrome_options(self, profile):
         options = webdriver.ChromeOptions()
         options.add_argument("--user-data-dir=" + profile)
         options.add_argument("--no-sandbox")
         options.add_argument("--disable-dev-shm-usage")
+        options.add_argument("--disable-gpu")
+        options.add_argument("--disable-webgl")
+        options.add_argument("--no-first-run")
+        options.add_argument("--no-default-browser-check")
         options.add_argument("--disable-blink-features=AutomationControlled")
         options.add_argument("--window-size=1440,1000")
         options.add_experimental_option("excludeSwitches", ["enable-automation"])
+        return options
 
-        for attempt in range(3):
-            try:
-                self.driver = webdriver.Chrome(options=options)
-                self.driver.get(WEB_APP_URL)
-                self.log("Chrome opened. Log in to EA if requested.")
-                self.sleep_between(2.0, 3.0)
-                self.try_login_button()
-                return
-            except WebDriverException as error:
-                self.log("Chrome failed to open (attempt %s): %s" % (attempt + 1, str(error)[:100]), "error")
-                self.driver = None
-                self.sleep_between(1.5, 2.5)
-        self.log("Chrome unavailable after 3 attempts. Will retry in background.", "error")
+    def open_browser(self):
+        """Open Chrome with triple fallback; never let a crash kill the agent."""
+        if self.driver is not None:
+            return
+
+        for profile_tag, profile_path in self._profile_candidates():
+            for attempt in range(2):
+                try:
+                    self.driver = webdriver.Chrome(
+                        options=self._chrome_options(profile_path)
+                    )
+                    self.driver.get(WEB_APP_URL)
+                    self.log("Chrome opened (%s)." % profile_tag)
+                    self.sleep_between(2.0, 3.0)
+                    self.try_login_button()
+                    return
+                except WebDriverException as error:
+                    self.log(
+                        "Chrome failed [%s, essai %s]: %s"
+                        % (profile_tag, attempt + 1, str(error)[:100]),
+                        "error",
+                    )
+                    self.driver = None
+                    self.sleep_between(1.0, 1.5)
+
+            # If the persistent profile was the one failing twice, wipe it
+            # so next iteration rebuilds it fresh instead of re-crashing.
+            if not profile_tag.startswith("temporaire"):
+                self._heal_profile(profile_path)
+
+        self.log("Chrome impossible a ouvrir. Reessaie en boucle.", "error")
         self.driver = None
 
     def close_browser(self):
