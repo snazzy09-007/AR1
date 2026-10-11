@@ -405,19 +405,52 @@ class SniperFCV5:
         except Exception:
             pass  # locked by another process : the temp profile saves us
 
+    STEALTH_JS = """
+(() => {
+  try { Object.defineProperty(navigator, 'webdriver', { get: () => undefined }); } catch (e) {}
+  try { Object.defineProperty(navigator, 'plugins', { get: () => [1, 2, 3, 4, 5] }); } catch (e) {}
+  try { Object.defineProperty(navigator, 'languages', { get: () => ['fr-FR', 'fr', 'en-US', 'en'] }); } catch (e) {}
+  try {
+    window.chrome = window.chrome || {};
+    window.chrome.runtime = window.chrome.runtime || { connect: () => ({}), sendMessage: () => ({}) };
+  } catch (e) {}
+  try {
+    const originalQuery = window.navigator.permissions && window.navigator.permissions.query;
+    if (originalQuery) {
+      window.navigator.permissions.query = (parameters) =>
+        parameters.name === 'notifications'
+          ? Promise.resolve({ state: Notification.permission })
+          : originalQuery(parameters);
+    }
+  } catch (e) {}
+})();
+"""
+
     def _chrome_options(self, profile):
         options = webdriver.ChromeOptions()
         options.add_argument("--user-data-dir=" + profile)
         options.add_argument("--no-sandbox")
         options.add_argument("--disable-dev-shm-usage")
         options.add_argument("--disable-gpu")
-        options.add_argument("--disable-webgl")
         options.add_argument("--no-first-run")
         options.add_argument("--no-default-browser-check")
         options.add_argument("--disable-blink-features=AutomationControlled")
         options.add_argument("--window-size=1440,1000")
         options.add_experimental_option("excludeSwitches", ["enable-automation"])
+        # Removes the Selenium automation extension that EA detects.
+        options.add_experimental_option("useAutomationExtension", False)
         return options
+
+    def _apply_stealth(self):
+        """Mask navigator.webdriver before any page runs JS. Without this the
+        EA Web App refuses the browser with 'unsupported browser'."""
+        try:
+            self.driver.execute_cdp_cmd(
+                "Page.addScriptToEvaluateOnNewDocument",
+                {"source": self.STEALTH_JS},
+            )
+        except Exception:
+            pass
 
     def open_browser(self):
         """Open Chrome with triple fallback; never let a crash kill the agent."""
@@ -430,8 +463,10 @@ class SniperFCV5:
                     self.driver = webdriver.Chrome(
                         options=self._chrome_options(profile_path)
                     )
+                    # Stealth BEFORE the first page load, else EA sees webdriver.
+                    self._apply_stealth()
                     self.driver.get(WEB_APP_URL)
-                    self.log("Chrome opened (%s)." % profile_tag)
+                    self.log("Chrome opened (%s, mode discret)." % profile_tag)
                     self.sleep_between(2.0, 3.0)
                     self.try_login_button()
                     return
