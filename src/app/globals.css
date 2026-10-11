@@ -136,6 +136,50 @@ input[type="number"] {
   appearance: textfield;
 }
 
+/* ---- slider vitesse ---- */
+.slider {
+  -webkit-appearance: none;
+  appearance: none;
+  height: 6px;
+  border-radius: 99px;
+  background: linear-gradient(90deg, #ff5c6a 0%, #b8f44d 35%, #5cd6f2 100%);
+  outline: none;
+  cursor: pointer;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.slider::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  background: var(--color-snow);
+  border: 2px solid #05070a;
+  box-shadow: 0 0 0 2px rgba(184, 244, 77, 0.5), 0 0 12px rgba(184, 244, 77, 0.3);
+  cursor: grab;
+  transition: transform 0.15s;
+}
+
+.slider::-webkit-slider-thumb:hover {
+  transform: scale(1.15);
+}
+
+.slider::-webkit-slider-thumb:active {
+  cursor: grabbing;
+  transform: scale(1.05);
+}
+
+.slider::-moz-range-thumb {
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  background: var(--color-snow);
+  border: 2px solid #05070a;
+  box-shadow: 0 0 0 2px rgba(184, 244, 77, 0.5), 0 0 12px rgba(184, 244, 77, 0.3);
+  cursor: grab;
+}
+
 /* ---- animations ---- */
 @keyframes soft-pulse {
   0%, 100% { opacity: 1; }

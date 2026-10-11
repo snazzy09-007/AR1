@@ -1,5 +1,6 @@
 "use client";
 
+import { useEffect, useState } from "react";
 import { motion } from "framer-motion";
 import {
   Coins,
@@ -11,10 +12,144 @@ import {
   Square,
   Target,
   Trash2,
+  Zap,
 } from "lucide-react";
 import type { EngineState, Strategy } from "@/lib/types";
 import { cls, fmtNum, fmtSigned } from "@/lib/format";
 import { SectionHead, Spin } from "./ui";
+
+/* ------------------------ VITESSE DE RECHERCHE ------------------------ */
+
+const SPEED_PRESETS = [
+  { label: "Turbo", ms: 150, tone: "border-danger/40 text-danger bg-danger/10" },
+  { label: "Rapide", ms: 250, tone: "border-lime/40 text-lime bg-lime/10" },
+  { label: "Prudent", ms: 450, tone: "border-frost/40 text-frost bg-frost/10" },
+];
+
+export function SpeedControl({
+  engine,
+  busy,
+  onAction,
+}: {
+  engine: EngineState;
+  busy: boolean;
+  onAction: (action: string, extra?: Record<string, unknown>) => void;
+}) {
+  const [speed, setSpeed] = useState(engine.loopDelayMs);
+  const [dirty, setDirty] = useState(false);
+
+  useEffect(() => {
+    if (!dirty) setSpeed(engine.loopDelayMs);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [engine.loopDelayMs]);
+
+  const apply = (ms: number) => {
+    const clamped = Math.min(20000, Math.max(100, Math.round(ms)));
+    setSpeed(clamped);
+    setDirty(false);
+    onAction("update_engine", { config: { loopDelayMs: clamped } });
+  };
+
+  const perMin = Math.round(60000 / Math.max(1, speed));
+  const speedTone =
+    speed <= 200 ? "text-danger" : speed <= 350 ? "text-lime" : "text-frost";
+
+  return (
+    <div className="rounded-xl border border-white/[0.06] bg-black/30 p-4">
+      <div className="mb-3 flex items-center justify-between">
+        <div className="flex items-center gap-2">
+          <Zap className={cls("size-3.5", speedTone)} />
+          <span className="text-[10px] font-semibold tracking-[0.18em] text-mist uppercase">
+            Vitesse de recherche
+          </span>
+        </div>
+        <span className={cls("font-mono text-[11px] font-bold tabular-nums", speedTone)}>
+          {speed} ms · ~{perMin}/min
+        </span>
+      </div>
+
+      {/* Slider */}
+      <div className="relative">
+        <input
+          type="range"
+          min={100}
+          max={1000}
+          step={10}
+          value={Math.min(1000, speed)}
+          onChange={(e) => {
+            setSpeed(Number(e.target.value));
+            setDirty(true);
+          }}
+          onMouseUp={() => dirty && apply(speed)}
+          onTouchEnd={() => dirty && apply(speed)}
+          className="slider w-full"
+        />
+        <div className="mt-1 flex justify-between font-mono text-[8px] text-mist/50">
+          <span>100 ms</span>
+          <span>500 ms</span>
+          <span>1000 ms</span>
+        </div>
+      </div>
+
+      {/* Champ libre + presets */}
+      <div className="mt-3 flex flex-wrap items-center gap-2">
+        <div className="relative">
+          <input
+            className="input w-[110px] !py-1.5 text-center !text-[13px]"
+            type="text"
+            inputMode="numeric"
+            value={String(speed)}
+            onChange={(e) => {
+              const v = e.target.value.replace(/[^\d]/g, "");
+              setSpeed(Number(v) || 0);
+              setDirty(true);
+            }}
+            onKeyDown={(e) => {
+              if (e.key === "Enter" && dirty) apply(speed);
+            }}
+            onBlur={() => dirty && speed >= 100 && apply(speed)}
+          />
+          <span className="absolute top-1/2 right-3 -translate-y-1/2 font-mono text-[10px] text-mist">
+            ms
+          </span>
+        </div>
+
+        {SPEED_PRESETS.map((p) => (
+          <button
+            key={p.ms}
+            type="button"
+            onClick={() => apply(p.ms)}
+            className={cls(
+              "rounded-lg border px-2.5 py-1.5 font-mono text-[10px] transition-all",
+              speed === p.ms
+                ? p.tone
+                : "border-white/10 text-mist hover:border-white/25 hover:text-snow",
+            )}
+          >
+            {p.label}
+          </button>
+        ))}
+
+        {dirty && (
+          <button
+            onClick={() => apply(speed)}
+            disabled={busy || speed < 100}
+            className="ml-auto inline-flex h-8 items-center gap-1.5 rounded-lg bg-lime px-3 text-[10px] font-bold tracking-[0.08em] text-black uppercase disabled:opacity-50"
+          >
+            {busy ? <Spin className="size-3" /> : <Zap className="size-3" />}
+            OK
+          </button>
+        )}
+      </div>
+
+      {speed < 150 && (
+        <p className="mt-2 text-[10px] text-danger/80">
+          En dessous de 150 ms, risque de détection accru par EA.
+        </p>
+      )}
+    </div>
+  );
+}
 
 const ACCENT_TEXT: Record<string, string> = {
   lime: "text-lime",
@@ -103,6 +238,9 @@ export function ControlsPanel({
         )}
         {running ? "Mettre en pause" : paused ? "Reprendre" : "Agent arrêté"}
       </button>
+
+      {/* Vitesse de recherche : champ libre + slider + presets */}
+      <SpeedControl engine={engine} busy={busy === "update_engine"} onAction={onAction} />
 
       <div className="grid grid-cols-2 gap-2.5">
         <button

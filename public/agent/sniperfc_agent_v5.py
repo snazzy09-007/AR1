@@ -77,6 +77,8 @@ class SniperFCV5:
     def __init__(self):
         self.engine = dict(DEFAULT_ENGINE)
         self.strategy = dict(DEFAULT_STRATEGY)
+        self.last_good_engine = dict(self.engine)
+        self.last_good_strategy = dict(self.strategy)
         self.driver = None
 
         self.paused = False
@@ -323,10 +325,16 @@ class SniperFCV5:
 
                 with self.lock:
                     old_filters = tuple(self.strategy.get(k) for k in FILTER_KEYS)
-                    self.engine.update(new_engine)
+                    if new_engine:
+                        self.engine.update(new_engine)
                     if new_strategy:
                         self.strategy = dict(DEFAULT_STRATEGY)
                         self.strategy.update(new_strategy)
+                    # Persist last known-good config so connection losses keep
+                    # the bot working with meaningful settings instead of
+                    # falling back to the launcher defaults.
+                    self.last_good_engine = dict(self.engine)
+                    self.last_good_strategy = dict(self.strategy)
                     new_filters = tuple(self.strategy.get(k) for k in FILTER_KEYS)
 
                     status = str(self.engine.get("status", "running"))
@@ -348,6 +356,11 @@ class SniperFCV5:
                 if self.api_online:
                     self.api_online = False
                     print("Console injoignable (%s). Nouvel essai..." % error, flush=True)
+                # Keep trading with the last good configuration instead of the
+                # launcher defaults; Chrome never must die from an API hiccup.
+                with self.lock:
+                    self.engine = dict(self.last_good_engine)
+                    self.strategy = dict(self.last_good_strategy)
 
             self.sleep_between(POLL_SECONDS)
 
@@ -355,6 +368,7 @@ class SniperFCV5:
     # Chrome lifecycle
     # ------------------------------------------------------------------
     def open_browser(self):
+        """Open Chrome with retry ; never let a driver crash kill the process."""
         if self.driver is not None:
             return
 
@@ -370,11 +384,20 @@ class SniperFCV5:
         options.add_argument("--window-size=1440,1000")
         options.add_experimental_option("excludeSwitches", ["enable-automation"])
 
-        self.driver = webdriver.Chrome(options=options)
-        self.driver.get(WEB_APP_URL)
-        self.log("Chrome opened. Log in to EA if requested.")
-        self.sleep_between(2.0, 3.0)
-        self.try_login_button()
+        for attempt in range(3):
+            try:
+                self.driver = webdriver.Chrome(options=options)
+                self.driver.get(WEB_APP_URL)
+                self.log("Chrome opened. Log in to EA if requested.")
+                self.sleep_between(2.0, 3.0)
+                self.try_login_button()
+                return
+            except WebDriverException as error:
+                self.log("Chrome failed to open (attempt %s): %s" % (attempt + 1, str(error)[:100]), "error")
+                self.driver = None
+                self.sleep_between(1.5, 2.5)
+        self.log("Chrome unavailable after 3 attempts. Will retry in background.", "error")
+        self.driver = None
 
     def close_browser(self):
         try:
@@ -827,9 +850,13 @@ class SniperFCV5:
                 self.sleep_between(delay * 0.75, delay * 1.05)
 
             except WebDriverException as error:
+                # Browser window closed mid-loop, zombie session, tab crash:
+                # NEVER kill the process. Ditch the dead driver, keep polling,
+                # and force a clean re-entry next iteration.
                 self.log("Chrome error: %s" % str(error)[:120], "error")
                 self.close_browser()
-                self.sleep_between(2.0)
+                self.market_ready = False
+                self.sleep_between(0.8)
             except Exception as error:
                 self.log("Loop error: %s" % error, "warn")
                 self.must_refresh = True

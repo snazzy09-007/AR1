@@ -47,6 +47,13 @@ export function ConnectPanel({
     if (ua.includes("mac") || ua.includes("linux") || ua.includes("x11")) setOs("unix");
   }, []);
 
+  // Detect Vercel preview aliases such as `ar-1-<hash>.vercel.app` which
+  // inherit Deployment Protection and reject all unauthenticated API calls.
+  // matches both "ar-1-<hash>.vercel.app" and "-ar-<n>-<hash>.vercel.app"
+  const previewProtected = /(^|-)ar-\d+-[a-z0-9]+(?:-[a-z0-9]+)*\.vercel\.app$/i.test(
+    typeof window !== "undefined" ? window.location.hostname : "",
+  );
+
   const copy = async (text: string, key: string) => {
     try {
       await navigator.clipboard.writeText(text);
@@ -91,6 +98,26 @@ export function ConnectPanel({
 
   return (
     <div className="space-y-4">
+      {previewProtected && (
+        <div className="flex items-start gap-3 rounded-2xl border border-danger/30 bg-danger/[0.07] p-4 text-[13px] text-danger/90">
+          <ShieldAlert className="mt-0.5 size-5 shrink-0 text-danger" />
+          <div className="space-y-1">
+            <p className="font-semibold">🚫 URL de preview protégée détectée</p>
+            <p className="leading-relaxed text-danger/85">
+              L&apos;adresse actuelle est un alias de déploiement Vercel (ex :
+              <code className="mx-1 rounded bg-black/30 px-1 py-0.5 font-mono text-[11px]">
+                ar-1-XXXX.vercel.app
+              </code>
+              ). Toutes les API répondent par une page d&apos;authentification, ce qui
+              empêche totalement l&apos;agent local d&apos;être reconnu. Tu dois utiliser
+              l&apos;URL de <strong>production</strong> de ton projet — celle que tu as
+              configurée dans <em>Vercel → Domains</em> (sans hash aléatoire) — ou
+              désactiver <em>Deployment Protection</em> puis régénérer ton launcher.
+            </p>
+          </div>
+        </div>
+      )}
+
       {/* HÉROS : démarrage en 1 clic */}
       <section className="glass scanline relative overflow-hidden rounded-2xl p-6 sm:p-8">
         <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(ellipse_50%_60%_at_20%_0%,rgba(184,244,77,0.1),transparent_70%)]" />
