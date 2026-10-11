@@ -7,6 +7,7 @@ export const ENGINE_KEYS = [
   "refreshMinLoops",
   "refreshMaxLoops",
   "loopDelayMs",
+  "resultViewMs",
   "buyLimit",
   "floodThreshold",
   "autoRefreshMin",

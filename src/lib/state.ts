@@ -116,6 +116,7 @@ export function serializeEngine(row: StateRow): EngineState {
     refreshMinLoops: row.refreshMinLoops,
     refreshMaxLoops: row.refreshMaxLoops,
     loopDelayMs: row.loopDelayMs,
+    resultViewMs: row.resultViewMs,
     buyLimit: row.buyLimit,
     floodThreshold: row.floodThreshold,
     autoRefreshMin: row.autoRefreshMin,

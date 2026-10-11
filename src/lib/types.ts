@@ -5,6 +5,7 @@ export interface EngineState {
   refreshMinLoops: number;
   refreshMaxLoops: number;
   loopDelayMs: number;
+  resultViewMs: number;
   buyLimit: number;
   floodThreshold: number;
   autoRefreshMin: number;

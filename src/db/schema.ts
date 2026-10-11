@@ -21,6 +21,7 @@ export const botState = pgTable("bot_state", {
   refreshMinLoops: integer("refresh_min_loops").notNull().default(400),
   refreshMaxLoops: integer("refresh_max_loops").notNull().default(500),
   loopDelayMs: integer("loop_delay_ms").notNull().default(250),
+  resultViewMs: integer("result_view_ms").notNull().default(800),
   buyLimit: integer("buy_limit").notNull().default(0), // 0 = illimité
   floodThreshold: integer("flood_threshold").notNull().default(6),
   autoRefreshMin: integer("auto_refresh_min").notNull().default(15),

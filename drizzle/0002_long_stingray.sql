@@ -1,0 +1,1 @@
+ALTER TABLE "bot_state" ADD COLUMN "result_view_ms" integer DEFAULT 800 NOT NULL;

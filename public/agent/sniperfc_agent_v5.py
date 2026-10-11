@@ -921,6 +921,12 @@ class SniperFCV5:
                 self.increment_search_price()
                 self.click_search()
                 self.scan_and_buy()
+
+                # Temps d'affichage des resultats AVANT le retour : laisse
+                # le temps de voir la page (et parait plus humain a EA).
+                view_ms = max(0.05, self.engine_int("resultViewMs") / 1000.0)
+                self.sleep_between(view_ms * 0.85, view_ms * 1.15)
+
                 self.go_back()
 
                 self.loops += 1

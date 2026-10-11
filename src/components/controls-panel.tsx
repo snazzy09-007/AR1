@@ -36,12 +36,16 @@ export function SpeedControl({
   onAction: (action: string, extra?: Record<string, unknown>) => void;
 }) {
   const [speed, setSpeed] = useState(engine.loopDelayMs);
+  const [viewMs, setViewMs] = useState(engine.resultViewMs);
   const [dirty, setDirty] = useState(false);
 
   useEffect(() => {
-    if (!dirty) setSpeed(engine.loopDelayMs);
+    if (!dirty) {
+      setSpeed(engine.loopDelayMs);
+      setViewMs(engine.resultViewMs);
+    }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [engine.loopDelayMs]);
+  }, [engine.loopDelayMs, engine.resultViewMs]);
 
   const apply = (ms: number) => {
     const clamped = Math.min(20000, Math.max(100, Math.round(ms)));
@@ -50,9 +54,18 @@ export function SpeedControl({
     onAction("update_engine", { config: { loopDelayMs: clamped } });
   };
 
-  const perMin = Math.round(60000 / Math.max(1, speed));
+  const applyView = (ms: number) => {
+    const clamped = Math.min(10000, Math.max(200, Math.round(ms)));
+    setViewMs(clamped);
+    setDirty(false);
+    onAction("update_engine", { config: { resultViewMs: clamped } });
+  };
+
+  const perMin = Math.round(60000 / Math.max(1, speed + viewMs));
   const speedTone =
     speed <= 200 ? "text-danger" : speed <= 350 ? "text-lime" : "text-frost";
+  const viewTone =
+    viewMs >= 1500 ? "text-gold" : viewMs >= 600 ? "text-lime" : "text-frost";
 
   return (
     <div className="rounded-xl border border-white/[0.06] bg-black/30 p-4">
@@ -91,7 +104,7 @@ export function SpeedControl({
         </div>
       </div>
 
-      {/* Champ libre + presets */}
+      {/* Champ libre vitesse + presets */}
       <div className="mt-3 flex flex-wrap items-center gap-2">
         <div className="relative">
           <input
@@ -129,22 +142,78 @@ export function SpeedControl({
             {p.label}
           </button>
         ))}
-
-        {dirty && (
-          <button
-            onClick={() => apply(speed)}
-            disabled={busy || speed < 100}
-            className="ml-auto inline-flex h-8 items-center gap-1.5 rounded-lg bg-lime px-3 text-[10px] font-bold tracking-[0.08em] text-black uppercase disabled:opacity-50"
-          >
-            {busy ? <Spin className="size-3" /> : <Zap className="size-3" />}
-            OK
-          </button>
-        )}
       </div>
+
+      {/* -- Durée d'affichage des résultats -- */}
+      <div className="mt-4 border-t border-white/[0.06] pt-3">
+        <div className="mb-2 flex items-center justify-between">
+          <span className="text-[10px] font-semibold tracking-[0.16em] text-mist uppercase">
+            Temps sur les résultats
+          </span>
+          <span className={cls("font-mono text-[11px] font-bold tabular-nums", viewTone)}>
+            {viewMs} ms
+          </span>
+        </div>
+
+        <input
+          type="range"
+          min={200}
+          max={3000}
+          step={50}
+          value={Math.min(3000, viewMs)}
+          onChange={(e) => {
+            setViewMs(Number(e.target.value));
+            setDirty(true);
+          }}
+          onMouseUp={() => dirty && applyView(viewMs)}
+          onTouchEnd={() => dirty && applyView(viewMs)}
+          className="slider w-full"
+        />
+
+        <div className="mt-2 flex flex-wrap items-center gap-2">
+          <div className="relative">
+            <input
+              className="input w-[110px] !py-1.5 text-center !text-[13px]"
+              type="text"
+              inputMode="numeric"
+              value={String(viewMs)}
+              onChange={(e) => {
+                const v = e.target.value.replace(/[^\d]/g, "");
+                setViewMs(Number(v) || 0);
+                setDirty(true);
+              }}
+              onKeyDown={(e) => {
+                if (e.key === "Enter" && dirty) applyView(viewMs);
+              }}
+              onBlur={() => dirty && viewMs >= 200 && applyView(viewMs)}
+            />
+            <span className="absolute top-1/2 right-3 -translate-y-1/2 font-mono text-[10px] text-mist">
+              ms
+            </span>
+          </div>
+          <span className="text-[10px] leading-tight text-mist/70">
+            durée entre Search et la flèche retour — laisse la page s&apos;afficher
+          </span>
+        </div>
+      </div>
+
+      {dirty && (
+        <button
+          onClick={() => {
+            apply(speed);
+            applyView(viewMs);
+          }}
+          disabled={busy || speed < 100 || viewMs < 200}
+          className="mt-2 inline-flex h-8 w-full items-center justify-center gap-1.5 rounded-lg bg-lime px-3 text-[10px] font-bold tracking-[0.08em] text-black uppercase disabled:opacity-50"
+        >
+          {busy ? <Spin className="size-3" /> : <Zap className="size-3" />}
+          Appliquer
+        </button>
+      )}
 
       {speed < 150 && (
         <p className="mt-2 text-[10px] text-danger/80">
-          En dessous de 150 ms, risque de détection accru par EA.
+          En dessous de 150 ms de délai, risque de détection accru par EA.
         </p>
       )}
     </div>

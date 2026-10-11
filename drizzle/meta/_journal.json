@@ -15,6 +15,13 @@
       "when": 1791750390404,
       "tag": "0001_tearful_black_widow",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1791753260352,
+      "tag": "0002_long_stingray",
+      "breakpoints": true
     }
   ]
 }
