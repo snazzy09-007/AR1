@@ -91,6 +91,33 @@ export function EnginePanel({
         ))}
       </div>
 
+      <div className="mt-4 flex flex-wrap items-center gap-2 rounded-xl border border-frost/15 bg-frost/[0.04] p-3">
+        <span className="mr-1 text-[10px] font-semibold tracking-[0.16em] text-mist uppercase">
+          Vitesse recherche
+        </span>
+        {[
+          { label: "Turbo", ms: "150", tone: "border-danger/35 text-danger" },
+          { label: "Rapide · conseillé", ms: "250", tone: "border-lime/40 text-lime" },
+          { label: "Prudent", ms: "450", tone: "border-frost/35 text-frost" },
+        ].map((speed) => (
+          <button
+            key={speed.ms}
+            type="button"
+            onClick={() => set("loopDelayMs", speed.ms)}
+            className={`rounded-lg border px-3 py-1.5 font-mono text-[10px] transition-all ${
+              draft.loopDelayMs === speed.ms
+                ? `${speed.tone} bg-white/[0.08] ring-1 ring-inset ring-white/10`
+                : "border-white/10 text-mist hover:border-white/25 hover:text-snow"
+            }`}
+          >
+            {speed.label} · {speed.ms} ms
+          </button>
+        ))}
+        <span className="ml-auto text-[10px] text-mist/70">
+          Turbo est plus agressif ; Rapide offre le meilleur équilibre.
+        </span>
+      </div>
+
       <div className="mt-5 grid gap-4 rounded-xl border border-white/[0.06] bg-black/25 p-4 sm:grid-cols-[1fr_180px] sm:items-end">
         <div>
           <div className="mb-2 flex items-center gap-2">

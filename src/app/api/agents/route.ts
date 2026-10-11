@@ -1,8 +1,8 @@
 import { desc, eq } from "drizzle-orm";
 import { db } from "@/db";
-import { agents } from "@/db/schema";
+import { agents, commands } from "@/db/schema";
 import { newToken } from "@/lib/agent";
-import { addLog, AGENT_ONLINE_WINDOW_MS } from "@/lib/state";
+import { addLog, AGENT_ONLINE_WINDOW_MS, updateState } from "@/lib/state";
 
 export const dynamic = "force-dynamic";
 
@@ -22,7 +22,16 @@ export async function POST(req: Request) {
       .where(eq(agents.id, row.id))
       .returning();
 
-    await addLog("ok", `🔗 Nouvel agent appairé : « ${name} ».`);
+    // Nouveau launcher = session neuve. Supprime tout ordre de contrôle
+    // restant et force un état démarrable AVANT de fournir le fichier.
+    await db.delete(commands).where(eq(commands.status, "pending"));
+    await updateState({
+      status: "running",
+      agentStatus: "offline",
+      lastSeenAt: null,
+    });
+
+    await addLog("ok", `🔗 Nouvel agent appairé : « ${name} » (session propre).`);
     return Response.json({
       ok: true,
       agent: { id: updated.id, name: updated.name, token: updated.token },

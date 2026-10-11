@@ -57,9 +57,12 @@ export async function POST(req: Request) {
         return Response.json({ ok: true });
 
       case "stop":
-        await updateState({ status: "stopped", demoMode: false });
-        await enqueueCommand("stop");
-        await addLog("error", "⏹ Arrêt demandé depuis la console.");
+        // « Stop » = veille connectée : le processus local ne meurt jamais à
+        // cause d'un bouton web. Il continue de poller et peut donc toujours
+        // recevoir Reprendre / Refresh / changement de stratégie.
+        await updateState({ status: "paused", demoMode: false, agentStatus: "paused" });
+        await enqueueCommand("standby");
+        await addLog("warn", "⏹ Agent mis en veille (connexion maintenue).");
         return Response.json({ ok: true });
 
       case "refresh_now":

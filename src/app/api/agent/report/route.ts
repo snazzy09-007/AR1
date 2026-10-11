@@ -1,6 +1,6 @@
 import { eq } from "drizzle-orm";
 import { db } from "@/db";
-import { agents, botState } from "@/db/schema";
+import { agents, botState, commands } from "@/db/schema";
 import { authorizeAgent, unauthorized } from "@/lib/agent";
 import {
   addLog,
@@ -113,9 +113,12 @@ async function handleEvent(ev: AgentEvent, agentId?: number) {
           .select({ status: botState.status })
           .from(botState)
           .where(eq(botState.id, STATE_ID));
-        if (state?.status === "stopped") {
+        if (ev.status === "starting") {
+          // Un nouveau processus repart toujours sur une session nette.
           patch.status = "running";
-          await addLog("ok", "🔓 Agent redémarré : l'état « arrêté » est réarmé.");
+          await db.delete(commands).where(eq(commands.status, "pending"));
+        } else if (state?.status === "stopped") {
+          patch.status = "running";
         }
       }
 

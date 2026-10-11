@@ -26,7 +26,7 @@ BASE_URL = "http://localhost:3000"
 AGENT_KEY = "dev-agent-key"
 CHROME_PROFILE = ""
 
-AGENT_VERSION = "5.0"
+AGENT_VERSION = "5.2"
 WEB_APP_URL = "https://www.ea.com/fr-fr/ea-sports-fc/ultimate-team/web-app/"
 POLL_SECONDS = 1.0
 HEARTBEAT_SECONDS = 5.0
@@ -98,6 +98,9 @@ class SniperFCV5:
         self._unauth_count = 0
         self.lock = threading.Lock()
         self.http = self.build_session()
+        self.report_http = self.build_session()
+        self.event_lock = threading.Lock()
+        self.event_queue = []
         # Anti zombie-stop : un ancien ordre d'arret (status=stopped
         # persistant ou commande stop non consommee) ne doit pas tuer un
         # agent qui vient de demarrer. Grace les STOP_IGNORE_SECONDS
@@ -212,14 +215,34 @@ class SniperFCV5:
         return True
 
     def report(self, *events):
-        try:
-            self.http.post(
-                BASE_URL + "/api/agent/report",
-                json={"events": list(events)},
-                timeout=8,
-            )
-        except Exception:
-            pass
+        """Queue telemetry: Selenium never waits for Vercel or Neon."""
+        with self.event_lock:
+            self.event_queue.extend(events)
+            if len(self.event_queue) > 500:
+                self.event_queue = self.event_queue[-500:]
+
+    def reporter_loop(self):
+        """Flush telemetry in batches from a dedicated thread."""
+        while not self.stopped or self.event_queue:
+            batch = []
+            with self.event_lock:
+                if self.event_queue:
+                    batch = self.event_queue[:30]
+                    del self.event_queue[:len(batch)]
+            if not batch:
+                self.sleep_between(0.18)
+                continue
+            try:
+                response = self.report_http.post(
+                    BASE_URL + "/api/agent/report",
+                    json={"events": batch},
+                    timeout=12,
+                )
+                response.raise_for_status()
+            except Exception:
+                with self.event_lock:
+                    self.event_queue = (batch + self.event_queue)[-500:]
+                self.sleep_between(2.0)
 
     def log(self, message, level="info"):
         now = time.strftime("%H:%M:%S")
@@ -257,11 +280,12 @@ class SniperFCV5:
         elif kind == "resume":
             self.paused = False
             self.log("Resume received from console", "ok")
-        elif kind == "stop":
-            if self.stop_allowed():
-                self.stopped = True
-            else:
-                print("Ordre STOP ignore : agent en cours de demarrage.", flush=True)
+        elif kind in ("stop", "standby"):
+            # Les commandes web ne tuent JAMAIS le processus. Elles mettent
+            # l'agent en veille tout en gardant le poll actif, donc Reprendre
+            # reste toujours disponible depuis le site.
+            self.paused = True
+            print("Agent en veille. Connexion console maintenue.", flush=True)
         elif kind in ("refresh_now", "reload_strategy"):
             self.must_refresh = True
         elif kind == "restart_driver":
@@ -484,54 +508,62 @@ class SniperFCV5:
         self.prepare_market()
 
     def increment_search_price(self):
+        """Fast path first: the criteria page is already loaded."""
         try:
             if self.increment_value < self.engine_int("maxIncrement"):
-                button = WebDriverWait(self.driver, 4).until(
-                    EC.element_to_be_clickable((By.CLASS_NAME, "increment-value"))
-                )
+                button = self.driver.find_element(By.CLASS_NAME, "increment-value")
                 button.click()
                 self.increment_value += 1
             else:
-                field = WebDriverWait(self.driver, 4).until(
-                    EC.presence_of_element_located((
-                        By.XPATH,
-                        "(//div[contains(@class,'ut-numeric-input-spinner-control')]"
-                        "/input[contains(@class,'ut-number-input-control')])[1]",
-                    ))
+                field = self.driver.find_element(
+                    By.XPATH,
+                    "(//div[contains(@class,'ut-numeric-input-spinner-control')]"
+                    "/input[contains(@class,'ut-number-input-control')])[1]",
                 )
                 field.clear()
                 self.increment_value = 0
         except Exception:
+            # A missed increment is harmless; never spend seconds waiting here.
             pass
 
     def click_search(self):
-        button = WebDriverWait(self.driver, 8).until(
-            EC.element_to_be_clickable(
-                (By.XPATH, "//button[normalize-space(text())='Search']")
+        try:
+            button = self.driver.find_element(
+                By.XPATH, "//button[normalize-space(text())='Search']"
             )
-        )
+        except Exception:
+            button = WebDriverWait(self.driver, 1.2).until(
+                EC.element_to_be_clickable(
+                    (By.XPATH, "//button[normalize-space(text())='Search']")
+                )
+            )
         button.click()
 
     def go_back(self):
         try:
-            button = WebDriverWait(self.driver, 6).until(
-                EC.element_to_be_clickable(
-                    (By.CSS_SELECTOR, "button.ut-navigation-button-control")
-                )
+            button = self.driver.find_element(
+                By.CSS_SELECTOR, "button.ut-navigation-button-control"
             )
             button.click()
-            self.sleep_between(0.05, 0.12)
+            self.sleep_between(0.02, 0.05)
         except Exception:
-            self.must_refresh = True
+            try:
+                WebDriverWait(self.driver, 1.2).until(
+                    EC.element_to_be_clickable(
+                        (By.CSS_SELECTOR, "button.ut-navigation-button-control")
+                    )
+                ).click()
+            except Exception:
+                self.must_refresh = True
 
     def read_credits(self):
         try:
-            element = WebDriverWait(self.driver, 2).until(
-                EC.presence_of_element_located(
-                    (By.CLASS_NAME, "view-navbar-currency-coins")
-                )
+            elements = self.driver.find_elements(
+                By.CLASS_NAME, "view-navbar-currency-coins"
             )
-            raw = element.text.replace(" ", "").replace(",", "").replace(".", "")
+            if not elements:
+                return self.credits
+            raw = elements[0].text.replace(" ", "").replace(",", "").replace(".", "")
             self.credits = int(raw)
         except Exception:
             pass
@@ -546,13 +578,12 @@ class SniperFCV5:
         return int(clean)
 
     def collect_results(self):
-        try:
-            items = WebDriverWait(self.driver, 0.9).until(
-                EC.presence_of_all_elements_located(
-                    (By.CSS_SELECTOR, "li.listFUTItem")
-                )
-            )
-        except TimeoutException:
+        # Immediate read + one short retry: empty searches no longer cost 0.9 s.
+        items = self.driver.find_elements(By.CSS_SELECTOR, "li.listFUTItem")
+        if not items:
+            self.sleep_between(0.16, 0.24)
+            items = self.driver.find_elements(By.CSS_SELECTOR, "li.listFUTItem")
+        if not items:
             return []
 
         results = []
@@ -568,6 +599,9 @@ class SniperFCV5:
         return results
 
     def report_snapshot(self, count, lowest=None):
+        # Five times less DB/API traffic; exact depth is still saved on buys.
+        if self.loops % 5 != 0:
+            return
         self.report({
             "type": "snapshot",
             "strategyId": self.strategy.get("id"),
@@ -676,7 +710,9 @@ class SniperFCV5:
             )
             return False
 
-        credits = self.read_credits()
+        credits = self.credits
+        if credits is None or self.loops % 10 == 0:
+            credits = self.read_credits()
         if credits is not None:
             if credits < lowest_price:
                 self.quiet_log("Not enough credits")
@@ -730,16 +766,15 @@ class SniperFCV5:
             self.log("Marche des transferts pret. Chasse en cours.", "ok")
 
     def run(self):
-        print("SNIPER FC Agent V5 demarre...", flush=True)
+        print("SNIPER FC Agent V5.2 demarre...", flush=True)
         self.check_console()
 
-        # Signale la presence AVANT le thread de poll : le serveur rearme
-        # un eventuel status=stopped restant d'une session precedente.
+        # API writes and command polling never block the Selenium loop.
+        threading.Thread(target=self.reporter_loop, daemon=True).start()
         self.heartbeat(force=True, status="starting")
-        self.log("Agent V5 connecte a la console.", "ok")
-
+        self.log("Agent V5.2 connecte a la console.", "ok")
+        self.sleep_between(0.35)
         threading.Thread(target=self.poll_loop, daemon=True).start()
-        self.sleep_between(0.8)
 
         self.open_browser()
         self.heartbeat(force=True, status="browser_ready")
@@ -748,10 +783,16 @@ class SniperFCV5:
         while not self.stopped:
             if self.paused:
                 self.heartbeat()
-                self.sleep_between(1.5, 2.2)
+                self.sleep_between(0.5)
                 continue
 
             try:
+                # If Chrome was closed manually, reopen it without killing the
+                # process or losing console controls.
+                if self.driver is None:
+                    self.open_browser()
+                    self.ensure_market_ready()
+
                 if self.must_restart:
                     self.must_restart = False
                     self.restart_browser()
@@ -770,32 +811,34 @@ class SniperFCV5:
                 self.click_search()
                 self.scan_and_buy()
                 self.go_back()
-                self.read_credits()
 
                 self.loops += 1
                 self.refresh_count += 1
+
+                # Navbar parsing is unnecessary on every search and could add
+                # up to two seconds on old versions.
+                if self.loops % 10 == 0 or self.credits is None:
+                    self.read_credits()
                 self.heartbeat()
 
-                delay = max(0.1, self.engine_int("loopDelayMs") / 1000.0)
-                self.sleep_between(delay * 0.8, delay * 1.3)
+                # Configurable speed: 100 ms minimum. Jitter is deliberately
+                # small so a configured 250 ms actually feels fast.
+                delay = min(2.0, max(0.10, self.engine_int("loopDelayMs") / 1000.0))
+                self.sleep_between(delay * 0.75, delay * 1.05)
 
             except WebDriverException as error:
                 self.log("Chrome error: %s" % str(error)[:120], "error")
-                try:
-                    self.restart_browser()
-                except Exception:
-                    self.close_browser()
-                    self.sleep_between(6)
-                    self.open_browser()
-                    self.ensure_market_ready()
+                self.close_browser()
+                self.sleep_between(2.0)
             except Exception as error:
                 self.log("Loop error: %s" % error, "warn")
                 self.must_refresh = True
-                self.sleep_between(1.0, 1.5)
+                self.sleep_between(0.35, 0.65)
 
         self.heartbeat(force=True, status="stopped")
+        self.sleep_between(0.25)
         self.close_browser()
-        print("SNIPER FC Agent V5 arrete.", flush=True)
+        print("SNIPER FC Agent V5.2 arrete.", flush=True)
 
 
 def main():
@@ -803,11 +846,11 @@ def main():
     try:
         agent.run()
     except KeyboardInterrupt:
-        print("Arret de l'agent V5...", flush=True)
+        print("Arret manuel de l'agent V5.2...", flush=True)
         agent.stopped = True
         agent.close_browser()
     except Exception as error:
-        print("Erreur fatale agent V5 : %s" % error, flush=True)
+        print("Erreur fatale agent V5.2 : %s" % error, flush=True)
         agent.close_browser()
         raise
 

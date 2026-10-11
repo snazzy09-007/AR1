@@ -138,7 +138,7 @@ export function ControlsPanel({
           className="flex h-10 items-center justify-center gap-2 rounded-xl border border-danger/45 bg-danger/[0.08] text-[11px] font-bold tracking-[0.08em] text-danger uppercase transition-all hover:bg-danger/15 disabled:opacity-50"
         >
           {busy === "stop" ? <Spin className="size-3.5" /> : <Square className="size-3.5" />}
-          Stop
+          Veille
         </button>
       </div>
 
