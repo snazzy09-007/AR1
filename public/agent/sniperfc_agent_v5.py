@@ -38,6 +38,7 @@ DEFAULT_ENGINE = {
     "refreshMinLoops": 400,
     "refreshMaxLoops": 500,
     "loopDelayMs": 400,
+    "resultViewMs": 1000,
     "buyLimit": 0,
     "floodThreshold": 6,
     "autoRefreshMin": 15,
@@ -651,21 +652,54 @@ class SniperFCV5:
         button.click()
 
     def go_back(self):
-        try:
-            button = self.driver.find_element(
-                By.CSS_SELECTOR, "button.ut-navigation-button-control"
-            )
-            button.click()
-            self.sleep_between(0.02, 0.05)
-        except Exception:
+        """Robust back navigation: try up to 3 times, never force a refresh
+        unless we are truly stuck. Matches the original bot's behaviour."""
+        for attempt in range(3):
             try:
-                WebDriverWait(self.driver, 1.2).until(
-                    EC.element_to_be_clickable(
-                        (By.CSS_SELECTOR, "button.ut-navigation-button-control")
-                    )
-                ).click()
+                button = self.driver.find_element(
+                    By.CSS_SELECTOR, "button.ut-navigation-button-control"
+                )
+                button.click()
+                # Wait for the page to actually settle after going back.
+                self.sleep_between(0.3, 0.5)
+                return
             except Exception:
-                self.must_refresh = True
+                # Maybe a popup is blocking: dismiss it and retry.
+                self._dismiss_popups()
+                self.sleep_between(0.15, 0.25)
+        # After 3 failed attempts, try the browser back arrow as last resort.
+        try:
+            self.driver.back()
+            self.sleep_between(0.5, 0.8)
+        except Exception:
+            # Only here do we concede and schedule a full refresh.
+            self.must_refresh = True
+
+    def _dismiss_popups(self):
+        """Click any visible Ok / Cancel / dialog button to close popups that
+        appear after failed buys, expired listings, or connection errors."""
+        popup_xpaths = [
+            "//button[span[normalize-space(text())='Ok']]",
+            "//button[normalize-space(text())='Ok']",
+            "//button[span[normalize-space(text())='Cancel']]",
+            "//button[normalize-space(text())='Cancel']",
+            "//button[contains(@class,'ut-button') and contains(@class,'dialog')]",
+            "//button[contains(@class,'btn-cancel')]",
+            "//button[contains(@class,'modal')]",
+        ]
+        for xpath in popup_xpaths:
+            try:
+                buttons = self.driver.find_elements(By.XPATH, xpath)
+                for btn in buttons:
+                    try:
+                        if btn.is_displayed() and btn.is_enabled():
+                            btn.click()
+                            self.sleep_between(0.05, 0.1)
+                            return
+                    except Exception:
+                        continue
+            except Exception:
+                continue
 
     def read_credits(self):
         try:
@@ -727,53 +761,84 @@ class SniperFCV5:
         element.send_keys(str(value))
 
     def purchase_and_relist(self, item, price, market_depth):
-        item.click()
-
-        buy_button = WebDriverWait(self.driver, 4).until(
-            EC.element_to_be_clickable(
-                (By.CSS_SELECTOR, "button.btn-standard.buyButton.currency-coins")
-            )
-        )
-        buy_button.click()
-
+        """Try to buy + relist. NEVER raises an exception: every step is
+        individually guarded. On failure we dismiss popups and return False
+        so the caller can simply go back and continue the loop."""
+        # 1. Click the cheapest card
         try:
-            WebDriverWait(self.driver, 2).until(
+            item.click()
+            self.sleep_between(0.1, 0.2)
+        except Exception:
+            return False
+
+        # 2. Click "Buy Now"
+        try:
+            buy_button = WebDriverWait(self.driver, 3).until(
                 EC.element_to_be_clickable(
-                    (By.XPATH, "//button[span[normalize-space(text())='Ok']]")
+                    (By.CSS_SELECTOR, "button.btn-standard.buyButton.currency-coins")
+                )
+            )
+            buy_button.click()
+            self.sleep_between(0.15, 0.25)
+        except Exception as error:
+            self._dismiss_popups()
+            self.log("Achat impossible (bouton introuvable): %s" % str(error)[:60], "warn")
+            return False
+
+        # 3. Confirm "Ok" (sometimes a second dialog appears)
+        self._dismiss_popups()
+        self.sleep_between(0.1, 0.2)
+        self._dismiss_popups()  # catch any error message popup
+
+        # 4. Click "List on Transfer Market"
+        try:
+            list_button = WebDriverWait(self.driver, 3).until(
+                EC.element_to_be_clickable(
+                    (By.XPATH, "//button[span[normalize-space(text())='List on Transfer Market']]")
+                )
+            )
+            list_button.click()
+            self.sleep_between(0.2, 0.3)
+        except Exception as error:
+            self._dismiss_popups()
+            self.log("Mise en vente impossible: %s" % str(error)[:60], "warn")
+            return False
+
+        # 5. Fill sell prices
+        try:
+            min_input = WebDriverWait(self.driver, 5).until(
+                EC.presence_of_element_located(
+                    (By.XPATH, "(//input[contains(@class,'ut-number-input-control')])[1]")
+                )
+            )
+            max_input = WebDriverWait(self.driver, 5).until(
+                EC.presence_of_element_located(
+                    (By.XPATH, "(//input[contains(@class,'ut-number-input-control')])[2]")
+                )
+            )
+            self.replace_input(min_input, self.strategy_int("sellMin"))
+            self.sleep_between(0.12, 0.2)
+            self.replace_input(max_input, self.strategy_int("sellMax"))
+            self.sleep_between(0.12, 0.2)
+        except Exception as error:
+            self._dismiss_popups()
+            self.log("Saisie prix impossible: %s" % str(error)[:60], "warn")
+            return False
+
+        # 6. Confirm listing
+        try:
+            WebDriverWait(self.driver, 5).until(
+                EC.element_to_be_clickable(
+                    (By.XPATH, "//button[normalize-space(text())='List for Transfer']")
                 )
             ).click()
-        except TimeoutException:
-            pass
+            self.sleep_between(0.15, 0.25)
+        except Exception as error:
+            self._dismiss_popups()
+            self.log("Confirmation vente impossible: %s" % str(error)[:60], "warn")
+            return False
 
-        list_button = WebDriverWait(self.driver, 4).until(
-            EC.element_to_be_clickable(
-                (By.XPATH, "//button[span[normalize-space(text())='List on Transfer Market']]")
-            )
-        )
-        list_button.click()
-        self.sleep_between(0.2, 0.4)
-
-        min_input = WebDriverWait(self.driver, 8).until(
-            EC.presence_of_element_located(
-                (By.XPATH, "(//input[contains(@class,'ut-number-input-control')])[1]")
-            )
-        )
-        max_input = WebDriverWait(self.driver, 8).until(
-            EC.presence_of_element_located(
-                (By.XPATH, "(//input[contains(@class,'ut-number-input-control')])[2]")
-            )
-        )
-        self.replace_input(min_input, self.strategy_int("sellMin"))
-        self.sleep_between(0.15, 0.25)
-        self.replace_input(max_input, self.strategy_int("sellMax"))
-        self.sleep_between(0.15, 0.25)
-
-        WebDriverWait(self.driver, 8).until(
-            EC.element_to_be_clickable(
-                (By.XPATH, "//button[normalize-space(text())='List for Transfer']")
-            )
-        ).click()
-
+        # Success: report to console
         player = self.strategy_str("playerName")
         if not player or not self.strategy_bool("playerEnabled"):
             player = "Market card"
@@ -789,10 +854,11 @@ class SniperFCV5:
             "marketDepth": market_depth,
         })
         self.log(
-            "BOUGHT %s for %s, relisted for %s"
+            "ACHAT %s pour %s, reliste a %s"
             % (player, price, self.strategy_int("sellMax")),
             "buy",
         )
+        return True
 
     def scan_and_buy(self):
         results = self.collect_results()
@@ -944,17 +1010,30 @@ class SniperFCV5:
                 self.sleep_between(delay * 0.75, delay * 1.05)
 
             except WebDriverException as error:
-                # Browser window closed mid-loop, zombie session, tab crash:
-                # NEVER kill the process. Ditch the dead driver, keep polling,
-                # and force a clean re-entry next iteration.
-                self.log("Chrome error: %s" % str(error)[:120], "error")
-                self.close_browser()
-                self.market_ready = False
-                self.sleep_between(0.8)
+                # Fatal browser errors only: session dead, window gone.
+                # Transient errors (element not found, stale reference) are
+                # handled above and never reach this point.
+                err = str(error).lower()
+                if ("no such window" in err
+                        or "session not created" in err
+                        or "invalid session" in err
+                        or "browser has been closed" in err):
+                    self.log("Chrome ferme. Reouverture...", "warn")
+                    self.close_browser()
+                    self.market_ready = False
+                    self.sleep_between(1.0)
+                else:
+                    # Transient: dismiss any popup and go back. NEVER kill.
+                    self.log("Erreur Chrome (non fatale): %s" % str(error)[:80], "warn")
+                    self._dismiss_popups()
+                    self.sleep_between(0.3, 0.5)
             except Exception as error:
-                self.log("Loop error: %s" % error, "warn")
-                self.must_refresh = True
-                self.sleep_between(0.35, 0.65)
+                # Unknown error: log, dismiss popups, go back, continue.
+                # NEVER set must_refresh here: that was the old behaviour that
+                # caused a full page reload on every hiccup.
+                self.log("Erreur (ignoree): %s" % str(error)[:80], "warn")
+                self._dismiss_popups()
+                self.sleep_between(0.3, 0.5)
 
         self.heartbeat(force=True, status="stopped")
         self.sleep_between(0.25)

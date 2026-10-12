@@ -26,6 +26,12 @@ const SPEED_PRESETS = [
   { label: "Prudent", ms: 450, tone: "border-frost/40 text-frost bg-frost/10" },
 ];
 
+const VIEW_PRESETS = [
+  { label: "Bref", ms: 500, tone: "border-frost/35 text-frost bg-frost/10" },
+  { label: "Normal", ms: 1000, tone: "border-lime/35 text-lime bg-lime/10" },
+  { label: "Long", ms: 2000, tone: "border-gold/35 text-gold bg-gold/10" },
+];
+
 export function SpeedControl({
   engine,
   busy,
@@ -192,8 +198,25 @@ export function SpeedControl({
             </span>
           </div>
           <span className="text-[10px] leading-tight text-mist/70">
-            durée entre Search et la flèche retour — laisse la page s&apos;afficher
+            durée entre Search et la flèche retour
           </span>
+        </div>
+        <div className="mt-1.5 flex flex-wrap gap-1.5">
+          {VIEW_PRESETS.map((p) => (
+            <button
+              key={p.ms}
+              type="button"
+              onClick={() => applyView(p.ms)}
+              className={cls(
+                "rounded-lg border px-2.5 py-1 font-mono text-[9px] transition-all",
+                viewMs === p.ms
+                  ? p.tone
+                  : "border-white/10 text-mist hover:border-white/25 hover:text-snow",
+              )}
+            >
+              {p.label} · {p.ms}ms
+            </button>
+          ))}
         </div>
       </div>
 
