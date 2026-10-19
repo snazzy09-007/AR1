@@ -99,6 +99,7 @@ class SniperFCV5:
         self.last_refresh_at = time.time()
         self.last_heartbeat_at = 0.0
         self.last_quiet_log_at = 0.0
+        self.last_loop_ms = 0
         self.api_online = False
         self._unauth_count = 0
         self.lock = threading.Lock()
@@ -112,6 +113,42 @@ class SniperFCV5:
         # premieres secondes, le serveur a le temps de se rearmer.
         self.started_at = time.time()
         self.grace_seconds = 20.0
+
+    REQUIRED_ATTRS = {
+        "engine": lambda: dict(DEFAULT_ENGINE),
+        "strategy": lambda: dict(DEFAULT_STRATEGY),
+        "last_good_engine": lambda: dict(DEFAULT_ENGINE),
+        "last_good_strategy": lambda: dict(DEFAULT_STRATEGY),
+        "driver": lambda: None,
+        "paused": lambda: False,
+        "stopped": lambda: False,
+        "must_refresh": lambda: False,
+        "must_restart": lambda: False,
+        "market_ready": lambda: False,
+        "loops": lambda: 0,
+        "refresh_count": lambda: 0,
+        "increment_value": lambda: 0,
+        "buys": lambda: 0,
+        "credits": lambda: None,
+        "next_refresh": lambda: 450,
+        "last_refresh_at": lambda: time.time(),
+        "last_heartbeat_at": lambda: 0.0,
+        "last_quiet_log_at": lambda: 0.0,
+        "last_loop_ms": lambda: 0,
+        "api_online": lambda: False,
+        "started_at": lambda: time.time(),
+    }
+
+    def self_heal(self):
+        """Initialise tout attribut manquant. Un compteur oublie ne doit
+        JAMAIS faire planter l'agent au demarrage."""
+        missing = []
+        for name, factory in self.REQUIRED_ATTRS.items():
+            if not hasattr(self, name):
+                setattr(self, name, factory())
+                missing.append(name)
+        if missing:
+            print("Auto-reparation de: %s" % ", ".join(missing), flush=True)
 
     def stop_allowed(self):
         return (time.time() - self.started_at) > self.grace_seconds
@@ -260,23 +297,31 @@ class SniperFCV5:
             self.log(message)
 
     def heartbeat(self, force=False, status=None):
-        now = time.time()
-        if not force and now - self.last_heartbeat_at < HEARTBEAT_SECONDS:
-            return
-        self.last_heartbeat_at = now
-        self.report({
-            "type": "heartbeat",
-            "status": status or ("paused" if self.paused else "running"),
-            "credits": self.credits,
-            "loops": self.loops,
-            "refreshCount": self.refresh_count,
-            "incrementValue": self.increment_value,
-            "nextRefreshIn": max(0, self.next_refresh - self.refresh_count),
-            "lastLoopMs": self.last_loop_ms,
-            "platform": "%s %s" % (platform.system(), platform.release()),
-            "version": AGENT_VERSION,
-            "name": platform.node() or "Mon PC",
-        })
+        """Telemetry must NEVER crash the agent: getattr with defaults makes
+        a missing counter harmless instead of fatal."""
+        try:
+            now = time.time()
+            if not force and now - self.last_heartbeat_at < HEARTBEAT_SECONDS:
+                return
+            self.last_heartbeat_at = now
+            self.report({
+                "type": "heartbeat",
+                "status": status or ("paused" if self.paused else "running"),
+                "credits": getattr(self, "credits", None),
+                "loops": getattr(self, "loops", 0),
+                "refreshCount": getattr(self, "refresh_count", 0),
+                "incrementValue": getattr(self, "increment_value", 0),
+                "nextRefreshIn": max(
+                    0, getattr(self, "next_refresh", 0)
+                    - getattr(self, "refresh_count", 0)
+                ),
+                "lastLoopMs": getattr(self, "last_loop_ms", 0),
+                "platform": "%s %s" % (platform.system(), platform.release()),
+                "version": AGENT_VERSION,
+                "name": platform.node() or "Mon PC",
+            })
+        except Exception as error:
+            print("Heartbeat ignore: %s" % error, flush=True)
 
     def apply_command(self, command):
         kind = (command or {}).get("type")
@@ -966,7 +1011,8 @@ class SniperFCV5:
             self.log("Marche des transferts pret. Chasse en cours.", "ok")
 
     def run(self):
-        print("SNIPER FC Agent V5.2 demarre...", flush=True)
+        print("SNIPER FC Agent V5.3 demarre...", flush=True)
+        self.self_heal()
         self.check_console()
 
         # API writes and command polling never block the Selenium loop.
