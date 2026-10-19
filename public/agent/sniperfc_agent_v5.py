@@ -641,12 +641,12 @@ class SniperFCV5:
     def click_search(self):
         try:
             button = self.driver.find_element(
-                By.XPATH, "//button[normalize-space(text())='Search']"
+                By.XPATH, "//button[text()='Search']"
             )
         except Exception:
             button = WebDriverWait(self.driver, 1.2).until(
                 EC.element_to_be_clickable(
-                    (By.XPATH, "//button[normalize-space(text())='Search']")
+                    (By.XPATH, "//button[text()='Search']")
                 )
             )
         button.click()
@@ -679,10 +679,10 @@ class SniperFCV5:
         """Click any visible Ok / Cancel / dialog button to close popups that
         appear after failed buys, expired listings, or connection errors."""
         popup_xpaths = [
-            "//button[span[normalize-space(text())='Ok']]",
-            "//button[normalize-space(text())='Ok']",
-            "//button[span[normalize-space(text())='Cancel']]",
-            "//button[normalize-space(text())='Cancel']",
+            "//button[span[text()='Ok']]",
+            "//button[text()='Ok']",
+            "//button[span[text()='Cancel']]",
+            "//button[text()='Cancel']",
             "//button[contains(@class,'ut-button') and contains(@class,'dialog')]",
             "//button[contains(@class,'btn-cancel')]",
             "//button[contains(@class,'modal')]",
@@ -723,13 +723,23 @@ class SniperFCV5:
         return int(clean)
 
     def collect_results(self):
-        # Immediate read + one short retry: empty searches no longer cost 0.9 s.
-        items = self.driver.find_elements(By.CSS_SELECTOR, "li.listFUTItem")
-        if not items:
-            self.sleep_between(0.16, 0.24)
-            items = self.driver.find_elements(By.CSS_SELECTOR, "li.listFUTItem")
-        if not items:
-            return []
+        # Wait like the original bot (0.5s) so items actually render.
+        try:
+            items = WebDriverWait(self.driver, 0.5).until(
+                EC.presence_of_all_elements_located(
+                    (By.CSS_SELECTOR, "li.listFUTItem")
+                )
+            )
+        except TimeoutException:
+            # Second short retry (page still loading)
+            try:
+                items = WebDriverWait(self.driver, 0.5).until(
+                    EC.presence_of_all_elements_located(
+                        (By.CSS_SELECTOR, "li.listFUTItem")
+                    )
+                )
+            except TimeoutException:
+                return []
 
         results = []
         for item in items:
@@ -760,15 +770,35 @@ class SniperFCV5:
         element.send_keys(Keys.DELETE)
         element.send_keys(str(value))
 
-    def purchase_and_relist(self, item, price, market_depth):
-        """Try to buy + relist. NEVER raises an exception: every step is
-        individually guarded. On failure we dismiss popups and return False
-        so the caller can simply go back and continue the loop."""
-        # 1. Click the cheapest card
-        try:
-            item.click()
-            self.sleep_between(0.1, 0.2)
-        except Exception:
+    def purchase_and_relist(self, price, market_depth):
+        """Buy + relist, following the EXACT pattern of the original bot:
+        find the card by price text (fresh DOM query at click time) to avoid
+        stale element errors. NEVER raises an exception."""
+        # 1. Click the cheapest card - fresh XPath query like the original
+        min_price_str = f"{price:,}"
+        xpath_player = (
+            f"(//span[@class='currency-coins value' and text()='{min_price_str}']"
+            f"/ancestor::li[contains(@class,'listFUTItem')])[1]"
+        )
+
+        clicked = False
+        for attempt in range(3):
+            try:
+                card = WebDriverWait(self.driver, 3).until(
+                    EC.element_to_be_clickable((By.XPATH, xpath_player))
+                )
+                card.click()
+                self.sleep_between(0.1, 0.2)
+                clicked = True
+                break
+            except Exception as error:
+                if attempt == 2:
+                    self.log("Carte introuvable (stale): %s" % str(error)[:60], "warn")
+                    self._dismiss_popups()
+                    return False
+                self.sleep_between(0.15, 0.25)
+
+        if not clicked:
             return False
 
         # 2. Click "Buy Now"
@@ -794,7 +824,7 @@ class SniperFCV5:
         try:
             list_button = WebDriverWait(self.driver, 3).until(
                 EC.element_to_be_clickable(
-                    (By.XPATH, "//button[span[normalize-space(text())='List on Transfer Market']]")
+                    (By.XPATH, "//button[span[text()='List on Transfer Market']]")
                 )
             )
             list_button.click()
@@ -829,7 +859,7 @@ class SniperFCV5:
         try:
             WebDriverWait(self.driver, 5).until(
                 EC.element_to_be_clickable(
-                    (By.XPATH, "//button[normalize-space(text())='List for Transfer']")
+                    (By.XPATH, "//button[text()='List for Transfer']")
                 )
             ).click()
             self.sleep_between(0.15, 0.25)
@@ -903,7 +933,7 @@ class SniperFCV5:
                 })
                 return False
 
-        self.purchase_and_relist(lowest_item, lowest_price, market_depth)
+        self.purchase_and_relist(lowest_price, market_depth)
 
         buy_limit = self.engine_int("buyLimit")
         if buy_limit > 0 and self.buys >= buy_limit:
