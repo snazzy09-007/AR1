@@ -272,6 +272,7 @@ class SniperFCV5:
             "refreshCount": self.refresh_count,
             "incrementValue": self.increment_value,
             "nextRefreshIn": max(0, self.next_refresh - self.refresh_count),
+            "lastLoopMs": self.last_loop_ms,
             "platform": "%s %s" % (platform.system(), platform.release()),
             "version": AGENT_VERSION,
             "name": platform.node() or "Mon PC",
@@ -652,27 +653,21 @@ class SniperFCV5:
         button.click()
 
     def go_back(self):
-        """Robust back navigation: try up to 3 times, never force a refresh
-        unless we are truly stuck. Matches the original bot's behaviour."""
+        """Robust back navigation with NO hardcoded sleep: the main loop owns
+        all timing via its deadline. Retries, never forces a refresh."""
         for attempt in range(3):
             try:
                 button = self.driver.find_element(
                     By.CSS_SELECTOR, "button.ut-navigation-button-control"
                 )
                 button.click()
-                # Wait for the page to actually settle after going back.
-                self.sleep_between(0.3, 0.5)
                 return
             except Exception:
-                # Maybe a popup is blocking: dismiss it and retry.
                 self._dismiss_popups()
-                self.sleep_between(0.15, 0.25)
-        # After 3 failed attempts, try the browser back arrow as last resort.
+                time.sleep(0.05)
         try:
             self.driver.back()
-            self.sleep_between(0.5, 0.8)
         except Exception:
-            # Only here do we concede and schedule a full refresh.
             self.must_refresh = True
 
     def _dismiss_popups(self):
@@ -722,24 +717,22 @@ class SniperFCV5:
         clean = text.replace(" ", "").replace(",", "").replace(".", "")
         return int(clean)
 
-    def collect_results(self):
-        # Wait like the original bot (0.5s) so items actually render.
-        try:
-            items = WebDriverWait(self.driver, 0.5).until(
-                EC.presence_of_all_elements_located(
-                    (By.CSS_SELECTOR, "li.listFUTItem")
-                )
-            )
-        except TimeoutException:
-            # Second short retry (page still loading)
+    def collect_results(self, budget_s=0.5):
+        """Poll for results in tiny steps. Returns AS SOON as cards render
+        (fast path), and only consumes the whole budget when the search is
+        empty. No more fixed double-wait that doubled every loop."""
+        deadline = time.time() + max(0.10, budget_s)
+        items = []
+        while True:
             try:
-                items = WebDriverWait(self.driver, 0.5).until(
-                    EC.presence_of_all_elements_located(
-                        (By.CSS_SELECTOR, "li.listFUTItem")
-                    )
-                )
-            except TimeoutException:
+                items = self.driver.find_elements(By.CSS_SELECTOR, "li.listFUTItem")
+            except Exception:
+                items = []
+            if items:
+                break
+            if time.time() >= deadline:
                 return []
+            time.sleep(0.04)
 
         results = []
         for item in items:
@@ -748,7 +741,7 @@ class SniperFCV5:
                     By.XPATH, ".//span[@class='currency-coins value']"
                 )
                 if len(values) >= 3:
-                    results.append((self.parse_price(values[2].text), item))
+                    results.append((self.parse_price(values[2].text), None))
             except Exception:
                 continue
         return results
@@ -890,14 +883,14 @@ class SniperFCV5:
         )
         return True
 
-    def scan_and_buy(self):
-        results = self.collect_results()
+    def scan_and_buy(self, results):
+        """Analyse des resultats deja collectes. Retourne True si un achat a
+        ete tente (l'appelant gere alors le retour immediat)."""
         if not results:
-            self.report_snapshot(0, None)
             return False
 
         results.sort(key=lambda pair: pair[0])
-        lowest_price, lowest_item = results[0]
+        lowest_price = results[0][0]
         market_depth = len(results)
         self.report_snapshot(market_depth, lowest_price)
 
@@ -1014,30 +1007,50 @@ class SniperFCV5:
                     self.must_refresh = False
                     self.refresh_market()
 
+                # =====================================================
+                # TIMING PAR ECHEANCE : la valeur reglee est le temps REEL
+                # total d'une boucle, pas une pause ajoutee par-dessus.
+                # =====================================================
+                loop_start = time.time()
+                target_total = min(20.0, max(0.05, self.engine_int("loopDelayMs") / 1000.0))
+                view_budget = min(10.0, max(0.05, self.engine_int("resultViewMs") / 1000.0))
+
                 self.increment_search_price()
                 self.click_search()
-                self.scan_and_buy()
 
-                # Temps d'affichage des resultats AVANT le retour : laisse
-                # le temps de voir la page (et parait plus humain a EA).
-                view_ms = max(0.05, self.engine_int("resultViewMs") / 1000.0)
-                self.sleep_between(view_ms * 0.85, view_ms * 1.15)
+                # Recherche : rend la main des que les cartes apparaissent,
+                # sinon consomme le budget d'affichage (temps gratuit).
+                results_shown_at = time.time()
+                results = self.collect_results(view_budget)
+
+                if results:
+                    self.scan_and_buy(results)
+
+                # Le temps sur les resultats s'applique TOUJOURS, de facon
+                # previsible : c'est la duree mini pendant laquelle la page
+                # reste affichee avant le clic sur la fleche de retour.
+                spent_on_results = time.time() - results_shown_at
+                if spent_on_results < view_budget:
+                    time.sleep(view_budget - spent_on_results)
 
                 self.go_back()
 
                 self.loops += 1
                 self.refresh_count += 1
 
-                # Navbar parsing is unnecessary on every search and could add
-                # up to two seconds on old versions.
                 if self.loops % 10 == 0 or self.credits is None:
                     self.read_credits()
-                self.heartbeat()
 
-                # Configurable speed: 100 ms minimum. Jitter is deliberately
-                # small so a configured 250 ms actually feels fast.
-                delay = min(2.0, max(0.10, self.engine_int("loopDelayMs") / 1000.0))
-                self.sleep_between(delay * 0.75, delay * 1.05)
+                # Temps reel de cette boucle, remonte a la console.
+                self.last_loop_ms = int((time.time() - loop_start) * 1000)
+
+                # Comble uniquement le RESTANT pour atteindre la cible :
+                # si le travail a deja dure plus longtemps, on n'attend pas.
+                remaining = (loop_start + target_total) - time.time()
+                if remaining > 0:
+                    time.sleep(remaining)
+
+                self.heartbeat()
 
             except WebDriverException as error:
                 # Fatal browser errors only: session dead, window gone.

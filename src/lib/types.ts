@@ -24,6 +24,7 @@ export interface EngineState {
   refreshCount: number;
   incrementValue: number;
   nextRefreshIn: number | null;
+  lastLoopMs: number | null;
   lastSeenAt: string | null;
   sessionStartedAt: string | null;
   updatedAt: string;

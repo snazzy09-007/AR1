@@ -32,6 +32,7 @@ interface AgentEvent {
   refreshCount?: unknown;
   incrementValue?: unknown;
   nextRefreshIn?: unknown;
+  lastLoopMs?: unknown;
   count?: unknown;
   platform?: string;
   version?: string;
@@ -99,6 +100,7 @@ async function handleEvent(ev: AgentEvent, agentId?: number) {
         "refreshCount",
         "incrementValue",
         "nextRefreshIn",
+        "lastLoopMs",
       ] as const) {
         const v = num(ev[key]);
         if (v !== undefined) patch[key] = v;

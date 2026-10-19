@@ -1,0 +1,1 @@
+ALTER TABLE "bot_state" ADD COLUMN "last_loop_ms" integer;

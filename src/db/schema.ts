@@ -47,6 +47,7 @@ export const botState = pgTable("bot_state", {
   refreshCount: integer("refresh_count").notNull().default(0),
   incrementValue: integer("increment_value").notNull().default(0),
   nextRefreshIn: integer("next_refresh_in"),
+  lastLoopMs: integer("last_loop_ms"),
   lastSeenAt: timestamp("last_seen_at", { withTimezone: true }),
   sessionStartedAt: timestamp("session_started_at", { withTimezone: true }),
   updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),

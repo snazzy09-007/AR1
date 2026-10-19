@@ -134,6 +134,7 @@ export function serializeEngine(row: StateRow): EngineState {
     refreshCount: row.refreshCount,
     incrementValue: row.incrementValue,
     nextRefreshIn: row.nextRefreshIn,
+    lastLoopMs: row.lastLoopMs,
     lastSeenAt: iso(row.lastSeenAt),
     sessionStartedAt: iso(row.sessionStartedAt),
     updatedAt: row.updatedAt.toISOString(),

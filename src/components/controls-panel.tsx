@@ -22,15 +22,18 @@ import { SectionHead, Spin } from "./ui";
 
 const SPEED_PRESETS = [
   { label: "Turbo", ms: 150, tone: "border-danger/40 text-danger bg-danger/10" },
-  { label: "Rapide", ms: 250, tone: "border-lime/40 text-lime bg-lime/10" },
-  { label: "Prudent", ms: 450, tone: "border-frost/40 text-frost bg-frost/10" },
+  { label: "Rapide", ms: 300, tone: "border-lime/40 text-lime bg-lime/10" },
+  { label: "Prudent", ms: 600, tone: "border-frost/40 text-frost bg-frost/10" },
 ];
 
 const VIEW_PRESETS = [
-  { label: "Bref", ms: 500, tone: "border-frost/35 text-frost bg-frost/10" },
-  { label: "Normal", ms: 1000, tone: "border-lime/35 text-lime bg-lime/10" },
-  { label: "Long", ms: 2000, tone: "border-gold/35 text-gold bg-gold/10" },
+  { label: "Bref", ms: 400, tone: "border-frost/35 text-frost bg-frost/10" },
+  { label: "Normal", ms: 900, tone: "border-lime/35 text-lime bg-lime/10" },
+  { label: "Long", ms: 1800, tone: "border-gold/35 text-gold bg-gold/10" },
 ];
+
+const clampLoop = (v: number) => Math.min(20000, Math.max(50, Math.round(v)));
+const clampView = (v: number) => Math.min(10000, Math.max(100, Math.round(v)));
 
 export function SpeedControl({
   engine,
@@ -41,106 +44,163 @@ export function SpeedControl({
   busy: boolean;
   onAction: (action: string, extra?: Record<string, unknown>) => void;
 }) {
-  const [speed, setSpeed] = useState(engine.loopDelayMs);
-  const [viewMs, setViewMs] = useState(engine.resultViewMs);
-  const [dirty, setDirty] = useState(false);
+  const [loop, setLoop] = useState(engine.loopDelayMs);
+  const [view, setView] = useState(engine.resultViewMs);
+  const [saved, setSaved] = useState<"loop" | "view" | null>(null);
+
+  // Sync depuis l'agent tant que l'utilisateur n'est pas en train d'éditer
+  const [editing, setEditing] = useState(false);
+  useEffect(() => {
+    if (!editing) {
+      setLoop(engine.loopDelayMs);
+      setView(engine.resultViewMs);
+    }
+  }, [engine.loopDelayMs, engine.resultViewMs, editing]);
+
+  const flash = (k: "loop" | "view") => {
+    setSaved(k);
+    setTimeout(() => setSaved(null), 1400);
+  };
+
+  // Application automatique debouncée : plus de bouton à cliquer
+  const commit = (key: "loopDelayMs" | "resultViewMs", value: number) => {
+    const clean = key === "loopDelayMs" ? clampLoop(value) : clampView(value);
+    onAction("update_engine", { config: { [key]: clean } });
+    flash(key === "loopDelayMs" ? "loop" : "view");
+    setEditing(false);
+  };
+
+  // Debounce sur le champ libre / slider
+  useEffect(() => {
+    if (!editing) return;
+    const t = setTimeout(() => commit("loopDelayMs", loop), 550);
+    return () => clearTimeout(t);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [loop, editing]);
 
   useEffect(() => {
-    if (!dirty) {
-      setSpeed(engine.loopDelayMs);
-      setViewMs(engine.resultViewMs);
-    }
+    if (!editing) return;
+    const t = setTimeout(() => commit("resultViewMs", view), 550);
+    return () => clearTimeout(t);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [engine.loopDelayMs, engine.resultViewMs]);
+  }, [view, editing]);
 
-  const apply = (ms: number) => {
-    const clamped = Math.min(20000, Math.max(100, Math.round(ms)));
-    setSpeed(clamped);
-    setDirty(false);
-    onAction("update_engine", { config: { loopDelayMs: clamped } });
-  };
+  // Temps effectif réel : la boucle ne peut pas être plus courte que le
+  // temps passé sur les résultats + le travail Selenium.
+  const effective = Math.max(loop, view);
+  const perMin = Math.round(60000 / Math.max(1, effective));
+  const measured = engine.lastLoopMs;
 
-  const applyView = (ms: number) => {
-    const clamped = Math.min(10000, Math.max(200, Math.round(ms)));
-    setViewMs(clamped);
-    setDirty(false);
-    onAction("update_engine", { config: { resultViewMs: clamped } });
-  };
-
-  const perMin = Math.round(60000 / Math.max(1, speed + viewMs));
-  const speedTone =
-    speed <= 200 ? "text-danger" : speed <= 350 ? "text-lime" : "text-frost";
+  const loopTone =
+    loop <= 150 ? "text-danger" : loop <= 400 ? "text-lime" : "text-frost";
   const viewTone =
-    viewMs >= 1500 ? "text-gold" : viewMs >= 600 ? "text-lime" : "text-frost";
+    view >= 1500 ? "text-gold" : view >= 700 ? "text-lime" : "text-frost";
 
   return (
     <div className="rounded-xl border border-white/[0.06] bg-black/30 p-4">
-      <div className="mb-3 flex items-center justify-between">
+      {/* -- En-tête : temps réel mesuré -- */}
+      <div className="mb-3 flex items-center justify-between gap-2">
         <div className="flex items-center gap-2">
-          <Zap className={cls("size-3.5", speedTone)} />
-          <span className="text-[10px] font-semibold tracking-[0.18em] text-mist uppercase">
-            Vitesse de recherche
+          <Zap className={cls("size-3.5", loopTone)} />
+          <span className="text-[10px] font-semibold tracking-[0.16em] text-mist uppercase">
+            Vitesse
           </span>
         </div>
-        <span className={cls("font-mono text-[11px] font-bold tabular-nums", speedTone)}>
-          {speed} ms · ~{perMin}/min
+        <span className="font-mono text-[11px] font-bold tabular-nums text-snow/90">
+          ~{perMin}/min
         </span>
       </div>
 
-      {/* Slider */}
-      <div className="relative">
-        <input
-          type="range"
-          min={100}
-          max={1000}
-          step={10}
-          value={Math.min(1000, speed)}
-          onChange={(e) => {
-            setSpeed(Number(e.target.value));
-            setDirty(true);
-          }}
-          onMouseUp={() => dirty && apply(speed)}
-          onTouchEnd={() => dirty && apply(speed)}
-          className="slider w-full"
-        />
-        <div className="mt-1 flex justify-between font-mono text-[8px] text-mist/50">
-          <span>100 ms</span>
-          <span>500 ms</span>
-          <span>1000 ms</span>
+      {/* -- Temps réel mesuré par l'agent -- */}
+      {measured != null && measured > 0 && (
+        <div
+          className={cls(
+            "mb-3 flex items-center justify-between rounded-lg border px-2.5 py-1.5",
+            Math.abs(measured - effective) <= 150
+              ? "border-lime/25 bg-lime/[0.06]"
+              : "border-gold/25 bg-gold/[0.06]",
+          )}
+        >
+          <span className="text-[9px] font-semibold tracking-[0.12em] text-mist uppercase">
+            Mesuré par l&apos;agent
+          </span>
+          <span
+            className={cls(
+              "font-mono text-[11px] font-bold tabular-nums",
+              Math.abs(measured - effective) <= 150 ? "text-lime" : "text-gold",
+            )}
+          >
+            {measured} ms
+            {Math.abs(measured - effective) > 150 && (
+              <span className="ml-1 text-[9px] font-normal text-gold/70">
+                (cible {effective})
+              </span>
+            )}
+          </span>
         </div>
+      )}
+
+      {/* -- Boucle complète -- */}
+      <div className="mb-1.5 flex items-center justify-between">
+        <span className="text-[10px] font-semibold tracking-[0.14em] text-mist uppercase">
+          Temps d&apos;une boucle
+        </span>
+        <span className={cls("font-mono text-[11px] font-bold tabular-nums", loopTone)}>
+          {loop} ms
+        </span>
       </div>
 
-      {/* Champ libre vitesse + presets */}
-      <div className="mt-3 flex flex-wrap items-center gap-2">
+      <input
+        type="range"
+        min={50}
+        max={2000}
+        step={10}
+        value={Math.min(2000, loop)}
+        onChange={(e) => {
+          setEditing(true);
+          setLoop(Number(e.target.value));
+        }}
+        onPointerUp={() => commit("loopDelayMs", loop)}
+        onKeyUp={() => commit("loopDelayMs", loop)}
+        className="slider w-full"
+      />
+      <div className="mt-1 flex justify-between font-mono text-[8px] text-mist/50">
+        <span>50</span>
+        <span>1000</span>
+        <span>2000</span>
+      </div>
+
+      <div className="mt-2.5 flex flex-wrap items-center gap-2">
         <div className="relative">
           <input
-            className="input w-[110px] !py-1.5 text-center !text-[13px]"
+            className="input w-[104px] !py-1.5 text-center !text-[13px]"
             type="text"
             inputMode="numeric"
-            value={String(speed)}
+            value={String(loop)}
             onChange={(e) => {
-              const v = e.target.value.replace(/[^\d]/g, "");
-              setSpeed(Number(v) || 0);
-              setDirty(true);
+              setEditing(true);
+              setLoop(Number(e.target.value.replace(/[^\d]/g, "")) || 0);
             }}
             onKeyDown={(e) => {
-              if (e.key === "Enter" && dirty) apply(speed);
+              if (e.key === "Enter") commit("loopDelayMs", loop);
             }}
-            onBlur={() => dirty && speed >= 100 && apply(speed)}
+            onBlur={() => loop >= 50 && commit("loopDelayMs", loop)}
           />
-          <span className="absolute top-1/2 right-3 -translate-y-1/2 font-mono text-[10px] text-mist">
+          <span className="absolute top-1/2 right-2.5 -translate-y-1/2 font-mono text-[10px] text-mist">
             ms
           </span>
         </div>
-
         {SPEED_PRESETS.map((p) => (
           <button
             key={p.ms}
             type="button"
-            onClick={() => apply(p.ms)}
+            onClick={() => {
+              setLoop(p.ms);
+              commit("loopDelayMs", p.ms);
+            }}
             className={cls(
               "rounded-lg border px-2.5 py-1.5 font-mono text-[10px] transition-all",
-              speed === p.ms
+              loop === p.ms
                 ? p.tone
                 : "border-white/10 text-mist hover:border-white/25 hover:text-snow",
             )}
@@ -148,95 +208,93 @@ export function SpeedControl({
             {p.label}
           </button>
         ))}
+        {saved === "loop" && (
+          <span className="font-mono text-[9px] tracking-[0.1em] text-lime uppercase">
+            ✓ appliqué
+          </span>
+        )}
       </div>
 
-      {/* -- Durée d'affichage des résultats -- */}
+      {/* -- Temps sur les résultats -- */}
       <div className="mt-4 border-t border-white/[0.06] pt-3">
-        <div className="mb-2 flex items-center justify-between">
-          <span className="text-[10px] font-semibold tracking-[0.16em] text-mist uppercase">
+        <div className="mb-1.5 flex items-center justify-between">
+          <span className="text-[10px] font-semibold tracking-[0.14em] text-mist uppercase">
             Temps sur les résultats
           </span>
           <span className={cls("font-mono text-[11px] font-bold tabular-nums", viewTone)}>
-            {viewMs} ms
+            {view} ms
           </span>
         </div>
 
         <input
           type="range"
-          min={200}
+          min={100}
           max={3000}
           step={50}
-          value={Math.min(3000, viewMs)}
+          value={Math.min(3000, view)}
           onChange={(e) => {
-            setViewMs(Number(e.target.value));
-            setDirty(true);
+            setEditing(true);
+            setView(Number(e.target.value));
           }}
-          onMouseUp={() => dirty && applyView(viewMs)}
-          onTouchEnd={() => dirty && applyView(viewMs)}
+          onPointerUp={() => commit("resultViewMs", view)}
+          onKeyUp={() => commit("resultViewMs", view)}
           className="slider w-full"
         />
 
         <div className="mt-2 flex flex-wrap items-center gap-2">
           <div className="relative">
             <input
-              className="input w-[110px] !py-1.5 text-center !text-[13px]"
+              className="input w-[104px] !py-1.5 text-center !text-[13px]"
               type="text"
               inputMode="numeric"
-              value={String(viewMs)}
+              value={String(view)}
               onChange={(e) => {
-                const v = e.target.value.replace(/[^\d]/g, "");
-                setViewMs(Number(v) || 0);
-                setDirty(true);
+                setEditing(true);
+                setView(Number(e.target.value.replace(/[^\d]/g, "")) || 0);
               }}
               onKeyDown={(e) => {
-                if (e.key === "Enter" && dirty) applyView(viewMs);
+                if (e.key === "Enter") commit("resultViewMs", view);
               }}
-              onBlur={() => dirty && viewMs >= 200 && applyView(viewMs)}
+              onBlur={() => view >= 100 && commit("resultViewMs", view)}
             />
-            <span className="absolute top-1/2 right-3 -translate-y-1/2 font-mono text-[10px] text-mist">
+            <span className="absolute top-1/2 right-2.5 -translate-y-1/2 font-mono text-[10px] text-mist">
               ms
             </span>
           </div>
-          <span className="text-[10px] leading-tight text-mist/70">
-            durée entre Search et la flèche retour
-          </span>
-        </div>
-        <div className="mt-1.5 flex flex-wrap gap-1.5">
           {VIEW_PRESETS.map((p) => (
             <button
               key={p.ms}
               type="button"
-              onClick={() => applyView(p.ms)}
+              onClick={() => {
+                setView(p.ms);
+                commit("resultViewMs", p.ms);
+              }}
               className={cls(
-                "rounded-lg border px-2.5 py-1 font-mono text-[9px] transition-all",
-                viewMs === p.ms
+                "rounded-lg border px-2.5 py-1.5 font-mono text-[10px] transition-all",
+                view === p.ms
                   ? p.tone
                   : "border-white/10 text-mist hover:border-white/25 hover:text-snow",
               )}
             >
-              {p.label} · {p.ms}ms
+              {p.label}
             </button>
           ))}
+          {saved === "view" && (
+            <span className="font-mono text-[9px] tracking-[0.1em] text-lime uppercase">
+              ✓ appliqué
+            </span>
+          )}
         </div>
+
+        <p className="mt-2 text-[9px] leading-relaxed text-mist/60">
+          Temps passé sur la page de résultats avant le retour. La boucle complète
+          prend au minimum cette valeur.
+        </p>
       </div>
 
-      {dirty && (
-        <button
-          onClick={() => {
-            apply(speed);
-            applyView(viewMs);
-          }}
-          disabled={busy || speed < 100 || viewMs < 200}
-          className="mt-2 inline-flex h-8 w-full items-center justify-center gap-1.5 rounded-lg bg-lime px-3 text-[10px] font-bold tracking-[0.08em] text-black uppercase disabled:opacity-50"
-        >
-          {busy ? <Spin className="size-3" /> : <Zap className="size-3" />}
-          Appliquer
-        </button>
-      )}
-
-      {speed < 150 && (
+      {loop < 150 && (
         <p className="mt-2 text-[10px] text-danger/80">
-          En dessous de 150 ms de délai, risque de détection accru par EA.
+          En dessous de 150 ms, risque de détection accru par EA.
         </p>
       )}
     </div>
