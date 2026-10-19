@@ -819,14 +819,15 @@ class SniperFCV5:
             f"/ancestor::li[contains(@class,'listFUTItem')])[1]"
         )
 
+        # AUCUNE pause fixe : chaque WebDriverWait rend la main des que
+        # l'element est pret. C'est ce qui rend l'achat le plus rapide possible.
         clicked = False
         for attempt in range(3):
             try:
-                card = WebDriverWait(self.driver, 3).until(
+                card = WebDriverWait(self.driver, 2).until(
                     EC.element_to_be_clickable((By.XPATH, xpath_player))
                 )
                 card.click()
-                self.sleep_between(0.1, 0.2)
                 clicked = True
                 break
             except Exception as error:
@@ -834,39 +835,36 @@ class SniperFCV5:
                     self.log("Carte introuvable (stale): %s" % str(error)[:60], "warn")
                     self._dismiss_popups()
                     return False
-                self.sleep_between(0.15, 0.25)
+                time.sleep(0.05)
 
         if not clicked:
             return False
 
-        # 2. Click "Buy Now"
+        # 2. Click "Buy Now" - l'attente integree suffit, pas de sleep
         try:
-            buy_button = WebDriverWait(self.driver, 3).until(
+            buy_button = WebDriverWait(self.driver, 2).until(
                 EC.element_to_be_clickable(
                     (By.CSS_SELECTOR, "button.btn-standard.buyButton.currency-coins")
                 )
             )
             buy_button.click()
-            self.sleep_between(0.15, 0.25)
         except Exception as error:
             self._dismiss_popups()
             self.log("Achat impossible (bouton introuvable): %s" % str(error)[:60], "warn")
             return False
 
-        # 3. Confirm "Ok" (sometimes a second dialog appears)
+        # 3. Confirmer "Ok" si un dialogue apparait (poll tres court)
+        time.sleep(0.06)
         self._dismiss_popups()
-        self.sleep_between(0.1, 0.2)
-        self._dismiss_popups()  # catch any error message popup
 
         # 4. Click "List on Transfer Market"
         try:
-            list_button = WebDriverWait(self.driver, 3).until(
+            list_button = WebDriverWait(self.driver, 2).until(
                 EC.element_to_be_clickable(
                     (By.XPATH, "//button[span[text()='List on Transfer Market']]")
                 )
             )
             list_button.click()
-            self.sleep_between(0.2, 0.3)
         except Exception as error:
             self._dismiss_popups()
             self.log("Mise en vente impossible: %s" % str(error)[:60], "warn")
@@ -885,9 +883,8 @@ class SniperFCV5:
                 )
             )
             self.replace_input(min_input, self.strategy_int("sellMin"))
-            self.sleep_between(0.12, 0.2)
+            time.sleep(0.03)
             self.replace_input(max_input, self.strategy_int("sellMax"))
-            self.sleep_between(0.12, 0.2)
         except Exception as error:
             self._dismiss_popups()
             self.log("Saisie prix impossible: %s" % str(error)[:60], "warn")
@@ -895,12 +892,11 @@ class SniperFCV5:
 
         # 6. Confirm listing
         try:
-            WebDriverWait(self.driver, 5).until(
+            WebDriverWait(self.driver, 3).until(
                 EC.element_to_be_clickable(
                     (By.XPATH, "//button[text()='List for Transfer']")
                 )
             ).click()
-            self.sleep_between(0.15, 0.25)
         except Exception as error:
             self._dismiss_popups()
             self.log("Confirmation vente impossible: %s" % str(error)[:60], "warn")
@@ -1064,22 +1060,28 @@ class SniperFCV5:
                 self.increment_search_price()
                 self.click_search()
 
-                # Recherche : rend la main des que les cartes apparaissent,
-                # sinon consomme le budget d'affichage (temps gratuit).
+                # =====================================================
+                # resultViewMs = TIMEOUT DE DETECTION.
+                #
+                # CAS 1 - aucun joueur : on attend le temps regle (ex 500 ms)
+                #         apres le clic Search, PUIS on appuie sur retour.
+                # CAS 2 - joueur detecte : AUCUNE attente. Achat immediat,
+                #         relist immediat, retour immediat.
+                # =====================================================
                 results_shown_at = time.time()
                 results = self.collect_results(view_budget)
 
                 if results:
+                    # CAS 2 : joueur present -> agir VITE, zero attente.
                     self.scan_and_buy(results)
-
-                # Le temps sur les resultats s'applique TOUJOURS, de facon
-                # previsible : c'est la duree mini pendant laquelle la page
-                # reste affichee avant le clic sur la fleche de retour.
-                spent_on_results = time.time() - results_shown_at
-                if spent_on_results < view_budget:
-                    time.sleep(view_budget - spent_on_results)
-
-                self.go_back()
+                    self.go_back()
+                else:
+                    # CAS 1 : aucun joueur -> patienter le reste du delai,
+                    # puis retour. collect_results a deja consomme une partie.
+                    spent = time.time() - results_shown_at
+                    if spent < view_budget:
+                        time.sleep(view_budget - spent)
+                    self.go_back()
 
                 self.loops += 1
                 self.refresh_count += 1

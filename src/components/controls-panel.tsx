@@ -215,11 +215,11 @@ export function SpeedControl({
         )}
       </div>
 
-      {/* -- Temps sur les résultats -- */}
+      {/* -- Délai Search → Retour -- */}
       <div className="mt-4 border-t border-white/[0.06] pt-3">
         <div className="mb-1.5 flex items-center justify-between">
           <span className="text-[10px] font-semibold tracking-[0.14em] text-mist uppercase">
-            Temps sur les résultats
+            Délai Search → Retour
           </span>
           <span className={cls("font-mono text-[11px] font-bold tabular-nums", viewTone)}>
             {view} ms
@@ -287,8 +287,10 @@ export function SpeedControl({
         </div>
 
         <p className="mt-2 text-[9px] leading-relaxed text-mist/60">
-          Temps passé sur la page de résultats avant le retour. La boucle complète
-          prend au minimum cette valeur.
+          Temps max pour chercher un joueur avant de revenir. <br />
+          <span className="text-snow/75">Aucun joueur</span> : retour après ce délai.{" "}
+          <span className="text-lime/80">Joueur détecté</span> : achat + relist
+          immédiats, aucune attente.
         </p>
       </div>
 
